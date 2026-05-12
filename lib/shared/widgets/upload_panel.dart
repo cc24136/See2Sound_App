@@ -55,16 +55,16 @@ class _UploadPanelState extends State<UploadPanel> {
         },
         child: InkWell(
           onTap: widget.onTap,
-          borderRadius: BorderRadius.circular(14),
+          borderRadius: BorderRadius.circular(18),
           child: AnimatedContainer(
             duration: const Duration(milliseconds: 140),
-            height: 320,
+            constraints: const BoxConstraints(
+              minHeight: 360,
+            ),
             width: double.infinity,
             decoration: BoxDecoration(
-              color: isHovered
-                  ? AppColors.panelHover
-                  : panel,
-              borderRadius: BorderRadius.circular(14),
+              color: isHovered ? AppColors.panelHover : panel,
+              borderRadius: BorderRadius.circular(18),
               border: Border.all(
                 color: showFocus ? accent : border,
                 width: showFocus || widget.highContrast ? 3 : 1,
@@ -72,35 +72,44 @@ class _UploadPanelState extends State<UploadPanel> {
               boxShadow: [
                 BoxShadow(
                   color: Colors.black.withValues(alpha: 0.35),
-                  blurRadius: 18,
-                  offset: const Offset(0, 6),
+                  blurRadius: 24,
+                  offset: const Offset(0, 8),
                 ),
               ],
             ),
+            padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 24),
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Icon(
-                  Icons.upload_file_rounded,
-                  size: 64,
-                  color: accent,
+                ShaderMask(
+                  shaderCallback: (bounds) {
+                    return widget.highContrast
+                        ? LinearGradient(colors: [accent, accent])
+                            .createShader(bounds)
+                        : AppColors.mainGradient.createShader(bounds);
+                  },
+                  child: const Icon(
+                    Icons.upload_file_rounded,
+                    size: 82,
+                    color: Colors.white,
+                  ),
                 ),
-                const SizedBox(height: 18),
+                const SizedBox(height: 20),
                 Text(
                   'Importar Arquivo',
                   style: TextStyle(
                     color: text,
-                    fontSize: 30,
+                    fontSize: 34,
                     fontWeight: FontWeight.w800,
                   ),
                 ),
-                const SizedBox(height: 10),
+                const SizedBox(height: 14),
                 Text(
                   'Selecione um vídeo para iniciar a geração da audiodescrição',
                   textAlign: TextAlign.center,
                   style: TextStyle(
                     color: secondary,
-                    fontSize: 15,
+                    fontSize: 18,
                   ),
                 ),
                 const SizedBox(height: 18),
@@ -108,7 +117,7 @@ class _UploadPanelState extends State<UploadPanel> {
                   'Pressione Enter ou Espaço para selecionar',
                   style: TextStyle(
                     color: secondary,
-                    fontSize: 13,
+                    fontSize: 15,
                   ),
                 ),
               ],

@@ -5,33 +5,33 @@ class PageContainer extends StatelessWidget {
     super.key,
     required this.child,
     this.centerVertically = false,
+    this.maxWidth = 1200,
   });
 
   final Widget child;
   final bool centerVertically;
+  final double maxWidth;
 
   @override
   Widget build(BuildContext context) {
-    final content = Align(
-      alignment: Alignment.topCenter,
-      child: SingleChildScrollView(
-        padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 32),
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 980),
-          child: child,
+    if (centerVertically) {
+      return Center(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.symmetric(horizontal: 48, vertical: 40),
+          child: ConstrainedBox(
+            constraints: BoxConstraints(maxWidth: maxWidth),
+            child: child,
+          ),
         ),
-      ),
-    );
-
-    if (!centerVertically) {
-      return content;
+      );
     }
 
-    return Center(
+    return Align(
+      alignment: Alignment.topCenter,
       child: SingleChildScrollView(
-        padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 32),
+        padding: const EdgeInsets.symmetric(horizontal: 48, vertical: 40),
         child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 760),
+          constraints: BoxConstraints(maxWidth: maxWidth),
           child: child,
         ),
       ),

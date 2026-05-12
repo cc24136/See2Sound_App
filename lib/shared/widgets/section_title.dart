@@ -27,19 +27,19 @@ class SectionTitle extends StatelessWidget {
           textAlign: textAlign,
           style: TextStyle(
             color: AppColors.textPrimaryFor(highContrast),
-            fontSize: 24,
+            fontSize: 34,
             fontWeight: FontWeight.w800,
           ),
         ),
         if (subtitle != null) ...[
-          const SizedBox(height: 6),
+          const SizedBox(height: 8),
           Text(
             subtitle!,
             textAlign: textAlign,
             style: TextStyle(
               color: AppColors.textSecondaryFor(highContrast),
-              fontSize: 15,
-              height: 1.25,
+              fontSize: 18,
+              height: 1.3,
             ),
           ),
         ],
