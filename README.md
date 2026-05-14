@@ -226,9 +226,8 @@ The application is designed to be the main bridge between the user and the See2S
 ## 🔗 Related Repositories
 
 This project is part of the See2Sound system.
-
-🌐 Frontend Website → https://github.com/ClarAlvez/See2Sound_Frontend
-🧠 Backend AI/API → https://github.com/ClarAlvez/See2Sound_Backend
+- 🌐 Frontend Website → https://github.com/ClarAlvez/See2Sound_Frontend
+- 🧠 Backend AI/API → https://github.com/ClarAlvez/See2Sound_Backend
 
 ---
 
