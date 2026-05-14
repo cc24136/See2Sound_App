@@ -33,14 +33,13 @@ class SettingsPage extends StatelessWidget {
   Widget build(BuildContext context) {
     final text = AppColors.textPrimaryFor(highContrast);
     final secondary = AppColors.textSecondaryFor(highContrast);
-    final accent = AppColors.accentFor(highContrast);
 
     return Align(
       alignment: Alignment.topCenter,
       child: SingleChildScrollView(
         padding: const EdgeInsets.fromLTRB(64, 72, 64, 48),
         child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 980),
+          constraints: const BoxConstraints(maxWidth: 920),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -56,20 +55,18 @@ class SettingsPage extends StatelessWidget {
               const SizedBox(height: 8),
 
               Text(
-                'Personalize o comportamento, a narração e os recursos de acessibilidade do See2Sound.',
+                'Ajuste a experiência visual, a narração da interface e o local de salvamento.',
                 style: TextStyle(
                   color: secondary,
-                  fontSize: 17,
+                  fontSize: 16,
                   height: 1.35,
                 ),
               ),
 
               const SizedBox(height: 30),
 
-              _SettingsSection(
+              _SettingsCard(
                 title: 'Armazenamento',
-                description:
-                    'Defina onde os arquivos processados e audiodescrições serão salvos.',
                 highContrast: highContrast,
                 child: _SaveLocationRow(
                   highContrast: highContrast,
@@ -77,57 +74,55 @@ class SettingsPage extends StatelessWidget {
                 ),
               ),
 
-              const SizedBox(height: 18),
+              const SizedBox(height: 16),
 
-              _SettingsSection(
-                title: 'Audiodescrição',
-                description:
-                    'Controle a narração gerada e os ajustes principais de áudio.',
+              _SettingsCard(
+                title: 'Audiodescrição da interface',
                 highContrast: highContrast,
                 child: Column(
                   children: [
                     _SwitchSettingRow(
                       order: 5,
-                      title: 'Modo audiodescrição',
+                      title: 'Audiodescrição',
                       description:
-                          'Ativa a geração de narração descritiva para os vídeos importados.',
+                          'Narra botões, telas e ações selecionadas durante a navegação pelo app.',
                       value: audioDescriptionMode,
                       highContrast: highContrast,
+                      visualFocus: visualFocus,
                       onChanged: onAudioDescriptionModeChanged,
                     ),
 
-                    const SizedBox(height: 18),
+                    if (audioDescriptionMode) ...[
+                      const SizedBox(height: 18),
+                      _SoftDivider(highContrast: highContrast),
+                      const SizedBox(height: 18),
 
-                    _SliderSettingRow(
-                      order: 6,
-                      title: 'Volume da narração',
-                      description: 'Define o volume da voz gerada.',
-                      value: narrationVolume,
-                      highContrast: highContrast,
-                      onChanged: onNarrationVolumeChanged,
-                    ),
+                      _SliderSettingRow(
+                        order: 6,
+                        title: 'Volume da narração',
+                        value: narrationVolume,
+                        highContrast: highContrast,
+                        onChanged: onNarrationVolumeChanged,
+                      ),
 
-                    const SizedBox(height: 18),
+                      const SizedBox(height: 14),
 
-                    _SliderSettingRow(
-                      order: 7,
-                      title: 'Velocidade da fala',
-                      description:
-                          'Ajusta a velocidade da narração da audiodescrição.',
-                      value: speechSpeed,
-                      highContrast: highContrast,
-                      onChanged: onSpeechSpeedChanged,
-                    ),
+                      _SliderSettingRow(
+                        order: 7,
+                        title: 'Velocidade da fala',
+                        value: speechSpeed,
+                        highContrast: highContrast,
+                        onChanged: onSpeechSpeedChanged,
+                      ),
+                    ],
                   ],
                 ),
               ),
 
-              const SizedBox(height: 18),
+              const SizedBox(height: 16),
 
-              _SettingsSection(
-                title: 'Acessibilidade',
-                description:
-                    'Ajustes visuais para facilitar o uso por teclado e melhorar contraste.',
+              _SettingsCard(
+                title: 'Acessibilidade visual',
                 highContrast: highContrast,
                 child: Column(
                   children: [
@@ -135,9 +130,10 @@ class SettingsPage extends StatelessWidget {
                       order: 8,
                       title: 'Foco visual',
                       description:
-                          'Exibe bordas de destaque em botões e painéis selecionados pelo teclado.',
+                          'Mostra bordas de destaque nos elementos selecionados por Tab.',
                       value: visualFocus,
                       highContrast: highContrast,
+                      visualFocus: visualFocus,
                       onChanged: onVisualFocusChanged,
                     ),
 
@@ -147,29 +143,29 @@ class SettingsPage extends StatelessWidget {
                       order: 9,
                       title: 'Alto contraste',
                       description:
-                          'Troca a interface para cores mais fortes e sem gradientes.',
+                          'Remove gradientes e usa cores fortes para melhorar a leitura.',
                       value: highContrast,
                       highContrast: highContrast,
+                      visualFocus: visualFocus,
                       onChanged: onHighContrastChanged,
                     ),
                   ],
                 ),
               ),
 
-              const SizedBox(height: 18),
+              const SizedBox(height: 16),
 
-              _SettingsSection(
+              _SettingsCard(
                 title: 'Sobre',
-                description: 'Informações gerais da aplicação.',
                 highContrast: highContrast,
                 child: Row(
                   children: [
                     Icon(
                       Icons.info_outline,
-                      color: accent,
-                      size: 24,
+                      color: AppColors.accentFor(highContrast),
+                      size: 22,
                     ),
-                    const SizedBox(width: 14),
+                    const SizedBox(width: 12),
                     Expanded(
                       child: Text(
                         'See2Sound ver 0.1 — aplicação em desenvolvimento para geração de audiodescrição contextualizada.',
@@ -191,32 +187,29 @@ class SettingsPage extends StatelessWidget {
   }
 }
 
-class _SettingsSection extends StatelessWidget {
-  const _SettingsSection({
+class _SettingsCard extends StatelessWidget {
+  const _SettingsCard({
     required this.title,
-    required this.description,
     required this.highContrast,
     required this.child,
   });
 
   final String title;
-  final String description;
   final bool highContrast;
   final Widget child;
 
   @override
   Widget build(BuildContext context) {
     final text = AppColors.textPrimaryFor(highContrast);
-    final secondary = AppColors.textSecondaryFor(highContrast);
     final panel = AppColors.panelFor(highContrast);
     final border = AppColors.borderFor(highContrast);
 
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.all(22),
+      padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
         color: panel,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(14),
         border: Border.all(
           color: border,
           width: highContrast ? 2 : 1,
@@ -224,36 +217,50 @@ class _SettingsSection extends StatelessWidget {
         boxShadow: [
           if (!highContrast)
             BoxShadow(
-              color: Colors.black.withValues(alpha: 0.22),
-              blurRadius: 16,
-              offset: const Offset(0, 6),
+              color: Colors.black.withValues(alpha: 0.14),
+              blurRadius: 12,
+              offset: const Offset(0, 5),
             ),
         ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            title,
-            style: TextStyle(
-              color: text,
-              fontSize: 19,
-              fontWeight: FontWeight.w800,
-            ),
+          Row(
+            children: [
+              if (!highContrast)
+                Container(
+                  width: 4,
+                  height: 22,
+                  decoration: BoxDecoration(
+                    gradient: AppColors.mainGradient,
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                )
+              else
+                Container(
+                  width: 4,
+                  height: 22,
+                  decoration: BoxDecoration(
+                    color: AppColors.accentFor(highContrast),
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                ),
+
+              const SizedBox(width: 10),
+
+              Text(
+                title,
+                style: TextStyle(
+                  color: text,
+                  fontSize: 18,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ],
           ),
 
-          const SizedBox(height: 6),
-
-          Text(
-            description,
-            style: TextStyle(
-              color: secondary,
-              fontSize: 14,
-              height: 1.35,
-            ),
-          ),
-
-          const SizedBox(height: 20),
+          const SizedBox(height: 18),
 
           child,
         ],
@@ -273,8 +280,6 @@ class _SaveLocationRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final accent = AppColors.accentFor(highContrast);
-    final text = AppColors.textPrimaryFor(highContrast);
     final secondary = AppColors.textSecondaryFor(highContrast);
     final border = AppColors.borderFor(highContrast);
 
@@ -308,33 +313,14 @@ class _SaveLocationRow extends StatelessWidget {
 
         FocusTraversalOrder(
           order: const NumericFocusOrder(4),
-          child: ElevatedButton.icon(
+          child: _GradientButton(
+            label: 'Procurar',
+            icon: Icons.folder_open,
+            highContrast: highContrast,
+            visualFocus: visualFocus,
             onPressed: () {
               // Depois: abrir seletor de pasta.
             },
-            icon: const Icon(Icons.folder_open),
-            label: const Text('Procurar'),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: accent,
-              foregroundColor: highContrast ? Colors.black : Colors.white,
-              padding: const EdgeInsets.symmetric(
-                horizontal: 18,
-                vertical: 17,
-              ),
-              textStyle: const TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.w800,
-              ),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(10),
-                side: visualFocus
-                    ? BorderSide(
-                        color: accent,
-                        width: highContrast ? 2 : 1,
-                      )
-                    : BorderSide.none,
-              ),
-            ),
           ),
         ),
       ],
@@ -349,6 +335,7 @@ class _SwitchSettingRow extends StatelessWidget {
     required this.description,
     required this.value,
     required this.highContrast,
+    required this.visualFocus,
     required this.onChanged,
   });
 
@@ -357,14 +344,11 @@ class _SwitchSettingRow extends StatelessWidget {
   final String description;
   final bool value;
   final bool highContrast;
+  final bool visualFocus;
   final ValueChanged<bool> onChanged;
 
   @override
   Widget build(BuildContext context) {
-    final text = AppColors.textPrimaryFor(highContrast);
-    final secondary = AppColors.textSecondaryFor(highContrast);
-    final accent = AppColors.accentFor(highContrast);
-
     return Row(
       children: [
         Expanded(
@@ -379,13 +363,11 @@ class _SwitchSettingRow extends StatelessWidget {
 
         FocusTraversalOrder(
           order: NumericFocusOrder(order),
-          child: Switch(
+          child: _GradientSwitch(
             value: value,
+            highContrast: highContrast,
+            visualFocus: visualFocus,
             onChanged: onChanged,
-            activeColor: highContrast ? Colors.black : Colors.white,
-            activeTrackColor: accent,
-            inactiveThumbColor: text,
-            inactiveTrackColor: secondary.withValues(alpha: 0.35),
           ),
         ),
       ],
@@ -397,7 +379,6 @@ class _SliderSettingRow extends StatelessWidget {
   const _SliderSettingRow({
     required this.order,
     required this.title,
-    required this.description,
     required this.value,
     required this.highContrast,
     required this.onChanged,
@@ -405,46 +386,59 @@ class _SliderSettingRow extends StatelessWidget {
 
   final double order;
   final String title;
-  final String description;
   final double value;
   final bool highContrast;
   final ValueChanged<double> onChanged;
 
   @override
   Widget build(BuildContext context) {
-    final accent = AppColors.accentFor(highContrast);
+    final text = AppColors.textPrimaryFor(highContrast);
     final secondary = AppColors.textSecondaryFor(highContrast);
+    final accent = AppColors.accentFor(highContrast);
 
     return Row(
       children: [
         Expanded(
-          child: _SettingTextBlock(
-            title: title,
-            description: description,
-            highContrast: highContrast,
+          child: Text(
+            title,
+            style: TextStyle(
+              color: text,
+              fontSize: 15,
+              fontWeight: FontWeight.w700,
+            ),
           ),
         ),
 
         const SizedBox(width: 24),
 
         SizedBox(
-          width: 280,
+          width: 310,
           child: Row(
             children: [
               Expanded(
                 child: FocusTraversalOrder(
                   order: NumericFocusOrder(order),
-                  child: Slider(
-                    value: value,
-                    onChanged: onChanged,
-                    activeColor: accent,
-                    inactiveColor: secondary.withValues(alpha: 0.25),
+                  child: SliderTheme(
+                    data: SliderTheme.of(context).copyWith(
+                      activeTrackColor:
+                          highContrast ? accent : AppColors.gradientMiddle,
+                      inactiveTrackColor:
+                          secondary.withValues(alpha: highContrast ? 0.4 : 0.18),
+                      thumbColor:
+                          highContrast ? accent : AppColors.gradientStart,
+                      overlayColor: accent.withValues(alpha: 0.16),
+                      trackHeight: 6,
+                    ),
+                    child: Slider(
+                      value: value,
+                      onChanged: onChanged,
+                    ),
                   ),
                 ),
               ),
 
               SizedBox(
-                width: 44,
+                width: 46,
                 child: Text(
                   '${(value * 100).round()}%',
                   textAlign: TextAlign.right,
@@ -500,6 +494,181 @@ class _SettingTextBlock extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+class _GradientSwitch extends StatefulWidget {
+  const _GradientSwitch({
+    required this.value,
+    required this.highContrast,
+    required this.visualFocus,
+    required this.onChanged,
+  });
+
+  final bool value;
+  final bool highContrast;
+  final bool visualFocus;
+  final ValueChanged<bool> onChanged;
+
+  @override
+  State<_GradientSwitch> createState() => _GradientSwitchState();
+}
+
+class _GradientSwitchState extends State<_GradientSwitch> {
+  bool focused = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final accent = AppColors.accentFor(widget.highContrast);
+    final border = AppColors.borderFor(widget.highContrast);
+
+    return FocusableActionDetector(
+      onShowFocusHighlight: (value) {
+        setState(() {
+          focused = value;
+        });
+      },
+      actions: {
+        ActivateIntent: CallbackAction<ActivateIntent>(
+          onInvoke: (_) {
+            widget.onChanged(!widget.value);
+            return null;
+          },
+        ),
+      },
+      child: Semantics(
+        button: true,
+        checked: widget.value,
+        child: GestureDetector(
+          onTap: () => widget.onChanged(!widget.value),
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 160),
+            width: 56,
+            height: 30,
+            padding: const EdgeInsets.all(3),
+            decoration: BoxDecoration(
+              color: widget.highContrast
+                  ? (widget.value ? accent : Colors.black)
+                  : null,
+              gradient: widget.highContrast
+                  ? null
+                  : widget.value
+                      ? AppColors.mainGradient
+                      : null,
+              borderRadius: BorderRadius.circular(999),
+              border: Border.all(
+                color: widget.visualFocus && focused
+                    ? accent
+                    : widget.value
+                        ? accent
+                        : border,
+                width: widget.visualFocus && focused ? 3 : 1,
+              ),
+            ),
+            child: AnimatedAlign(
+              duration: const Duration(milliseconds: 160),
+              curve: Curves.easeOut,
+              alignment:
+                  widget.value ? Alignment.centerRight : Alignment.centerLeft,
+              child: Container(
+                width: 22,
+                height: 22,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: widget.highContrast
+                      ? (widget.value ? Colors.black : Colors.white)
+                      : Colors.white,
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _GradientButton extends StatelessWidget {
+  const _GradientButton({
+    required this.label,
+    required this.icon,
+    required this.highContrast,
+    required this.visualFocus,
+    required this.onPressed,
+  });
+
+  final String label;
+  final IconData icon;
+  final bool highContrast;
+  final bool visualFocus;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final accent = AppColors.accentFor(highContrast);
+
+    return Material(
+      color: Colors.transparent,
+      borderRadius: BorderRadius.circular(10),
+      child: InkWell(
+        onTap: onPressed,
+        borderRadius: BorderRadius.circular(10),
+        child: Ink(
+          padding: const EdgeInsets.symmetric(
+            horizontal: 18,
+            vertical: 15,
+          ),
+          decoration: BoxDecoration(
+            color: highContrast ? accent : null,
+            gradient: highContrast ? null : AppColors.mainGradient,
+            borderRadius: BorderRadius.circular(10),
+            border: visualFocus
+                ? Border.all(
+                    color: accent,
+                    width: highContrast ? 2 : 1,
+                  )
+                : null,
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                icon,
+                color: highContrast ? Colors.black : Colors.white,
+                size: 20,
+              ),
+              const SizedBox(width: 8),
+              Text(
+                label,
+                style: TextStyle(
+                  color: highContrast ? Colors.black : Colors.white,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _SoftDivider extends StatelessWidget {
+  const _SoftDivider({
+    required this.highContrast,
+  });
+
+  final bool highContrast;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: highContrast ? 2 : 1,
+      color: AppColors.borderFor(highContrast).withValues(
+        alpha: highContrast ? 1 : 0.6,
+      ),
     );
   }
 }
