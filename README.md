@@ -100,8 +100,6 @@ See2Sound_App/
 
 The application is planned around the following main areas:
 
----
-
 ### 🏠 Home
 
 Initial screen where the user can start the process of generating audio descriptions.
@@ -111,8 +109,6 @@ This area may include:
 - Button to start a new audio description
 - Recent activity
 - Access to main app features
-
----
 
 ### 📂 Video Processing
 
@@ -125,8 +121,6 @@ This area may include:
 - Progress feedback
 - Error and success messages
 
----
-
 ### 🎧 Saved Audio Descriptions
 
 Screen where generated descriptions are stored and can be accessed later.
@@ -137,8 +131,6 @@ This area may include:
 - Access to previous results
 - File information
 - Options to open, delete or manage descriptions
-
----
 
 ### ⚙️ Settings
 
@@ -151,8 +143,6 @@ This area may include:
 - Narration-related options
 - Visual effect reduction
 - General app preferences
-
----
 
 ### ♿ Accessibility
 
@@ -167,8 +157,6 @@ The application aims to support:
 - Options to reduce visual effects
 - Accessible controls and navigation patterns
 - Consistent focus indicators
-
----
 
 ### 🔗 Backend Communication
 
