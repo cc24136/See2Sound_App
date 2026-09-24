@@ -184,6 +184,42 @@ Testing may include:
 
 ---
 
+## 🔌 Configuração da API local
+
+O endereço da FastAPI é configurado pelo `dart-define`
+`SEE2SOUND_API_URL`. Inicie o backend aceitando conexões da rede local:
+
+```bash
+python -m uvicorn API.main:app --host 0.0.0.0 --port 8000 --reload
+```
+
+Na mesma máquina (macOS, Windows ou Linux):
+
+```bash
+flutter run -d macos \
+  --dart-define=SEE2SOUND_API_URL=http://127.0.0.1:8000
+```
+
+No Android Emulator, o host da máquina é normalmente `10.0.2.2`:
+
+```bash
+flutter run -d android \
+  --dart-define=SEE2SOUND_API_URL=http://10.0.2.2:8000
+```
+
+Em um dispositivo físico, use o IP local da máquina que executa o backend,
+sem fixá-lo no código:
+
+```bash
+flutter run \
+  --dart-define=SEE2SOUND_API_URL=http://IP-LOCAL-DO-PC:8000
+```
+
+Sem `dart-define`, o valor de desenvolvimento padrão é
+`http://127.0.0.1:8000`.
+
+---
+
 ## 🚧 Development Status
 
 🚧 Project currently under development as part of the See2Sound Project.

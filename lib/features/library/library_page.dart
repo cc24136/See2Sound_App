@@ -14,7 +14,6 @@ class LibraryPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final text = AppColors.textPrimaryFor(highContrast);
     final secondary = AppColors.textSecondaryFor(highContrast);
     final panel = AppColors.panelFor(highContrast);
     final border = AppColors.borderFor(highContrast);
