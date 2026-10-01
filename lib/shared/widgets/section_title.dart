@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../core/constants/app_colors.dart';
+import '../../core/theme/app_design_tokens.dart';
 
 class SectionTitle extends StatelessWidget {
   const SectionTitle({
@@ -25,10 +26,8 @@ class SectionTitle extends StatelessWidget {
         Text(
           title,
           textAlign: textAlign,
-          style: TextStyle(
+          style: AppTypography.pageTitle.copyWith(
             color: AppColors.textPrimaryFor(highContrast),
-            fontSize: 34,
-            fontWeight: FontWeight.w800,
           ),
         ),
         if (subtitle != null) ...[
@@ -36,10 +35,8 @@ class SectionTitle extends StatelessWidget {
           Text(
             subtitle!,
             textAlign: textAlign,
-            style: TextStyle(
+            style: AppTypography.pageSubtitle.copyWith(
               color: AppColors.textSecondaryFor(highContrast),
-              fontSize: 18,
-              height: 1.3,
             ),
           ),
         ],

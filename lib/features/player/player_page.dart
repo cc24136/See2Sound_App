@@ -3,6 +3,8 @@ import 'package:flutter/services.dart';
 import 'package:video_player/video_player.dart';
 
 import '../../core/constants/app_colors.dart';
+import '../../core/theme/app_design_tokens.dart';
+import '../../shared/widgets/app_components.dart';
 import 'synchronized_media_controller.dart';
 
 class PlayerPage extends StatefulWidget {
@@ -31,6 +33,7 @@ class _PlayerPageState extends State<PlayerPage> {
   late final SynchronizedMediaController _controller;
   Object? _initializationError;
   Duration? _pendingSeek;
+  bool _expandedVideo = false;
 
   @override
   void initState() {
@@ -67,28 +70,28 @@ class _PlayerPageState extends State<PlayerPage> {
   @override
   Widget build(BuildContext context) {
     final background = AppColors.backgroundFor(widget.highContrast);
-    final panel = AppColors.panelFor(widget.highContrast);
-    final border = AppColors.borderFor(widget.highContrast);
     final text = AppColors.textPrimaryFor(widget.highContrast);
     final secondary = AppColors.textSecondaryFor(widget.highContrast);
     final accent = AppColors.accentFor(widget.highContrast);
 
     return Scaffold(
       backgroundColor: background,
-      appBar: AppBar(
-        backgroundColor: AppColors.topBarFor(widget.highContrast),
-        foregroundColor: text,
-        leading: IconButton(
-          tooltip: widget.backTooltip,
-          onPressed: () => Navigator.of(context).pop(),
-          icon: const Icon(Icons.arrow_back),
-        ),
-        title: Text(
-          widget.filename,
-          overflow: TextOverflow.ellipsis,
-          style: const TextStyle(fontWeight: FontWeight.w700),
-        ),
-      ),
+      appBar: _expandedVideo
+          ? null
+          : AppBar(
+              backgroundColor: AppColors.topBarFor(widget.highContrast),
+              foregroundColor: text,
+              leading: IconButton(
+                tooltip: widget.backTooltip,
+                onPressed: () => Navigator.of(context).pop(),
+                icon: const Icon(Icons.arrow_back),
+              ),
+              title: Text(
+                widget.filename,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(fontWeight: FontWeight.w700),
+              ),
+            ),
       body: CallbackShortcuts(
         bindings: {
           const SingleActivator(LogicalKeyboardKey.space):
@@ -97,24 +100,22 @@ class _PlayerPageState extends State<PlayerPage> {
               _controller.seekBy(const Duration(seconds: -5)),
           const SingleActivator(LogicalKeyboardKey.arrowRight): () =>
               _controller.seekBy(const Duration(seconds: 5)),
+          const SingleActivator(LogicalKeyboardKey.escape): () {
+            if (_expandedVideo) setState(() => _expandedVideo = false);
+          },
         },
         child: Focus(
           autofocus: true,
           child: Center(
             child: SingleChildScrollView(
-              padding: const EdgeInsets.all(32),
+              padding: EdgeInsets.all(_expandedVideo ? 8 : 32),
               child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 1080),
-                child: Container(
-                  padding: const EdgeInsets.all(20),
-                  decoration: BoxDecoration(
-                    color: panel,
-                    borderRadius: BorderRadius.circular(16),
-                    border: Border.all(
-                      color: border,
-                      width: widget.highContrast ? 2 : 1,
-                    ),
-                  ),
+                constraints: BoxConstraints(
+                  maxWidth: _expandedVideo ? 1600 : 1080,
+                ),
+                child: AppCard(
+                  highContrast: widget.highContrast,
+                  padding: EdgeInsets.all(_expandedVideo ? 8 : 20),
                   child: _buildContent(text, secondary, accent),
                 ),
               ),
@@ -187,7 +188,16 @@ class _PlayerPageState extends State<PlayerPage> {
         .toDouble();
 
     return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        if (!_expandedVideo) ...[
+          Text(
+            widget.filename,
+            overflow: TextOverflow.ellipsis,
+            style: AppTypography.sectionTitle.copyWith(color: text),
+          ),
+          const SizedBox(height: AppSpacing.md),
+        ],
         Semantics(
           label: 'Vídeo ${widget.filename} com audiodescrição',
           child: ClipRRect(
@@ -237,78 +247,125 @@ class _PlayerPageState extends State<PlayerPage> {
           ],
         ),
         const SizedBox(height: 12),
-        Wrap(
-          alignment: WrapAlignment.center,
-          crossAxisAlignment: WrapCrossAlignment.center,
-          spacing: 8,
-          runSpacing: 8,
-          children: [
-            _ControlButton(
-              tooltip: 'Reiniciar',
-              semanticLabel: 'Reiniciar vídeo',
-              icon: Icons.replay,
-              onPressed: _controller.restart,
-              highContrast: widget.highContrast,
-              visualFocus: widget.visualFocus,
-            ),
-            _ControlButton(
-              tooltip: 'Voltar 5 segundos',
-              semanticLabel: 'Voltar cinco segundos',
-              icon: Icons.replay_5,
-              onPressed: () => _controller.seekBy(const Duration(seconds: -5)),
-              highContrast: widget.highContrast,
-              visualFocus: widget.visualFocus,
-            ),
-            Semantics(
-              button: true,
-              label: _controller.isPlaying ? 'Pausar' : 'Reproduzir',
-              child: Tooltip(
-                message: _controller.isPlaying ? 'Pausar' : 'Reproduzir',
-                child: ElevatedButton(
-                  onPressed: _controller.togglePlayback,
-                  style: ElevatedButton.styleFrom(
-                    shape: const CircleBorder(),
-                    padding: const EdgeInsets.all(18),
-                    backgroundColor: accent,
-                    foregroundColor: widget.highContrast
-                        ? Colors.black
-                        : Colors.white,
-                  ),
-                  child: Icon(
-                    _controller.isPlaying ? Icons.pause : Icons.play_arrow,
-                    size: 32,
+        Center(
+          child: Wrap(
+            alignment: WrapAlignment.center,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              _ControlButton(
+                tooltip: 'Reiniciar',
+                semanticLabel: 'Reiniciar vídeo',
+                icon: Icons.replay,
+                onPressed: _controller.restart,
+                highContrast: widget.highContrast,
+                visualFocus: widget.visualFocus,
+              ),
+              _ControlButton(
+                tooltip: 'Voltar 5 segundos',
+                semanticLabel: 'Voltar cinco segundos',
+                icon: Icons.replay_5,
+                onPressed: () =>
+                    _controller.seekBy(const Duration(seconds: -5)),
+                highContrast: widget.highContrast,
+                visualFocus: widget.visualFocus,
+              ),
+              Semantics(
+                button: true,
+                label: _controller.isPlaying ? 'Pausar' : 'Reproduzir',
+                child: Tooltip(
+                  message: _controller.isPlaying ? 'Pausar' : 'Reproduzir',
+                  child: ElevatedButton(
+                    onPressed: _controller.togglePlayback,
+                    style: ElevatedButton.styleFrom(
+                      shape: const CircleBorder(),
+                      padding: const EdgeInsets.all(18),
+                      backgroundColor: accent,
+                      foregroundColor: widget.highContrast
+                          ? Colors.black
+                          : Colors.white,
+                    ),
+                    child: Icon(
+                      _controller.isPlaying ? Icons.pause : Icons.play_arrow,
+                      size: 32,
+                    ),
                   ),
                 ),
               ),
-            ),
-            _ControlButton(
-              tooltip: 'Avançar 5 segundos',
-              semanticLabel: 'Avançar cinco segundos',
-              icon: Icons.forward_5,
-              onPressed: () => _controller.seekBy(const Duration(seconds: 5)),
-              highContrast: widget.highContrast,
-              visualFocus: widget.visualFocus,
-            ),
-            Icon(Icons.volume_up, color: secondary),
-            SizedBox(
-              width: 150,
-              child: Semantics(
-                label: 'Volume da audiodescrição',
-                value: '${(_controller.volume * 100).round()} por cento',
-                child: Slider(
-                  value: _controller.volume,
-                  activeColor: accent,
-                  onChanged: _controller.setVolume,
+              _ControlButton(
+                tooltip: 'Avançar 5 segundos',
+                semanticLabel: 'Avançar cinco segundos',
+                icon: Icons.forward_5,
+                onPressed: () => _controller.seekBy(const Duration(seconds: 5)),
+                highContrast: widget.highContrast,
+                visualFocus: widget.visualFocus,
+              ),
+              _ControlButton(
+                tooltip: 'Ir para o fim',
+                semanticLabel: 'Ir para o fim do vídeo',
+                icon: Icons.skip_next,
+                onPressed: () => _controller.seekTo(_controller.duration),
+                highContrast: widget.highContrast,
+                visualFocus: widget.visualFocus,
+              ),
+              Icon(Icons.volume_up, color: secondary),
+              SizedBox(
+                width: 150,
+                child: Semantics(
+                  label: 'Volume do áudio final com audiodescrição',
+                  value: '${(_controller.volume * 100).round()} por cento',
+                  child: Slider(
+                    value: _controller.volume,
+                    activeColor: accent,
+                    onChanged: _controller.setVolume,
+                  ),
                 ),
               ),
-            ),
-          ],
+              Tooltip(
+                message: 'Velocidade de reprodução',
+                child: Semantics(
+                  label: 'Velocidade de reprodução',
+                  value: '${_controller.playbackSpeed} vezes',
+                  child: DropdownButton<double>(
+                    value: _controller.playbackSpeed,
+                    items: const [0.75, 1.0, 1.25, 1.5, 2.0]
+                        .map(
+                          (speed) => DropdownMenuItem(
+                            value: speed,
+                            child: Text('${speed}x'),
+                          ),
+                        )
+                        .toList(),
+                    onChanged: (speed) {
+                      if (speed != null) _controller.setPlaybackSpeed(speed);
+                    },
+                  ),
+                ),
+              ),
+              _ControlButton(
+                tooltip: _expandedVideo
+                    ? 'Sair da tela ampliada'
+                    : 'Ampliar vídeo',
+                semanticLabel: _expandedVideo
+                    ? 'Sair da tela ampliada'
+                    : 'Ampliar vídeo',
+                icon: _expandedVideo ? Icons.fullscreen_exit : Icons.fullscreen,
+                onPressed: () =>
+                    setState(() => _expandedVideo = !_expandedVideo),
+                highContrast: widget.highContrast,
+                visualFocus: widget.visualFocus,
+              ),
+            ],
+          ),
         ),
         const SizedBox(height: 12),
-        Text(
-          'Atalhos: Espaço reproduz ou pausa; setas esquerda e direita deslocam 5 segundos.',
-          textAlign: TextAlign.center,
-          style: TextStyle(color: secondary, fontSize: 13),
+        AppStatusMessage(
+          type: AppMessageType.information,
+          title: 'Áudio sincronizado',
+          message:
+              'O vídeo original está silenciado. O volume controla a mixagem final com áudio original e audiodescrição. Espaço reproduz ou pausa; ← e → deslocam 5 segundos.',
+          highContrast: widget.highContrast,
         ),
       ],
     );

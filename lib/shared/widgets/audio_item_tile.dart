@@ -1,11 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../core/constants/app_colors.dart';
 
-enum AudioDescriptionStatus {
-  ready,
-  processing,
-  draft,
-}
+enum AudioDescriptionStatus { ready, processing, draft }
 
 class AudioItemTile extends StatefulWidget {
   const AudioItemTile({
@@ -148,32 +144,18 @@ class _AudioItemTileState extends State<AudioItemTile> {
                     const SizedBox(height: 6),
                     Row(
                       children: [
-                        Icon(
-                          statusIcon,
-                          color: accent,
-                          size: 17,
-                        ),
+                        Icon(statusIcon, color: accent, size: 17),
                         const SizedBox(width: 6),
                         Text(
                           statusLabel,
-                          style: TextStyle(
-                            color: secondary,
-                            fontSize: 13,
-                          ),
+                          style: TextStyle(color: secondary, fontSize: 13),
                         ),
                         const SizedBox(width: 16),
-                        Icon(
-                          Icons.schedule,
-                          color: secondary,
-                          size: 16,
-                        ),
+                        Icon(Icons.schedule, color: secondary, size: 16),
                         const SizedBox(width: 5),
                         Text(
                           widget.duration,
-                          style: TextStyle(
-                            color: secondary,
-                            fontSize: 13,
-                          ),
+                          style: TextStyle(color: secondary, fontSize: 13),
                         ),
                       ],
                     ),
@@ -187,8 +169,9 @@ class _AudioItemTileState extends State<AudioItemTile> {
                 onPressed: widget.onPrimaryAction,
                 style: ElevatedButton.styleFrom(
                   backgroundColor: accent,
-                  foregroundColor:
-                      widget.highContrast ? Colors.black : Colors.white,
+                  foregroundColor: widget.highContrast
+                      ? Colors.black
+                      : Colors.white,
                   padding: const EdgeInsets.symmetric(
                     horizontal: 18,
                     vertical: 14,

@@ -25,6 +25,7 @@ class SynchronizedMediaController extends ChangeNotifier {
   bool _correctingDrift = false;
   bool _handlingEnd = false;
   double _volume = 1;
+  double _playbackSpeed = 1;
 
   bool get isInitialized => _initialized;
   bool get isPlaying => _initialized && videoController.value.isPlaying;
@@ -33,6 +34,7 @@ class SynchronizedMediaController extends ChangeNotifier {
   Duration get duration =>
       _initialized ? videoController.value.duration : Duration.zero;
   double get volume => _volume;
+  double get playbackSpeed => _playbackSpeed;
 
   Future<void> initialize() async {
     await videoController.initialize();
@@ -90,6 +92,16 @@ class SynchronizedMediaController extends ChangeNotifier {
   Future<void> setVolume(double value) async {
     _volume = value.clamp(0, 1);
     await audioPlayer.setVolume(_volume);
+    if (!_disposed) notifyListeners();
+  }
+
+  Future<void> setPlaybackSpeed(double value) async {
+    if (!_initialized || _disposed) return;
+    _playbackSpeed = value.clamp(0.5, 2);
+    await Future.wait([
+      videoController.setPlaybackSpeed(_playbackSpeed),
+      audioPlayer.setSpeed(_playbackSpeed),
+    ]);
     if (!_disposed) notifyListeners();
   }
 

@@ -1,37 +1,25 @@
+import 'dart:io';
+
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 
+import '../../core/accessibility/interface_narration_service.dart';
 import '../../core/constants/app_colors.dart';
+import '../../core/settings/app_settings_controller.dart';
 import '../../core/storage/storage_settings_service.dart';
+import '../../core/theme/app_design_tokens.dart';
+import '../../shared/widgets/app_components.dart';
+import '../../shared/widgets/section_title.dart';
 
 class SettingsPage extends StatelessWidget {
   const SettingsPage({
     super.key,
-    required this.highContrast,
-    required this.visualFocus,
-    required this.audioDescriptionMode,
-    required this.narrationVolume,
-    required this.speechSpeed,
+    required this.settings,
     required this.storageSettingsService,
-    required this.onHighContrastChanged,
-    required this.onVisualFocusChanged,
-    required this.onAudioDescriptionModeChanged,
-    required this.onNarrationVolumeChanged,
-    required this.onSpeechSpeedChanged,
   });
 
-  final bool highContrast;
-  final bool visualFocus;
-  final bool audioDescriptionMode;
-  final double narrationVolume;
-  final double speechSpeed;
+  final AppSettingsController settings;
   final StorageSettingsService storageSettingsService;
-
-  final ValueChanged<bool> onHighContrastChanged;
-  final ValueChanged<bool> onVisualFocusChanged;
-  final ValueChanged<bool> onAudioDescriptionModeChanged;
-  final ValueChanged<double> onNarrationVolumeChanged;
-  final ValueChanged<double> onSpeechSpeedChanged;
 
   Future<void> _selectStorageDirectory(BuildContext context) async {
     try {
@@ -41,358 +29,464 @@ class SettingsPage extends StatelessWidget {
       if (selectedPath == null) return;
       await storageSettingsService.setDirectoryPath(selectedPath);
       if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Pasta de armazenamento atualizada.')),
-      );
+      _showMessage(context, 'Pasta de armazenamento atualizada.');
+      await InterfaceNarrationService(
+        settings,
+      ).announce(context, 'Pasta de armazenamento atualizada.');
     } on StorageSettingsException catch (error, stackTrace) {
       debugPrint('[See2Sound] Erro ao selecionar pasta: $error');
       debugPrint('$stackTrace');
-      if (!context.mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(error.message)));
+      if (context.mounted) _showMessage(context, error.message);
     } catch (error, stackTrace) {
       debugPrint('[See2Sound] Erro ao abrir seletor de pasta: $error');
       debugPrint('$stackTrace');
-      if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Não foi possível selecionar a pasta.')),
-      );
+      if (context.mounted) {
+        _showMessage(
+          context,
+          'Não foi possível selecionar a pasta. Verifique a permissão e tente novamente.',
+        );
+      }
     }
+  }
+
+  Future<void> _openStorageDirectory(BuildContext context) async {
+    final path = storageSettingsService.directoryPath;
+    if (path == null) return;
+    try {
+      if (!await Directory(path).exists()) {
+        throw const StorageSettingsException(
+          'A pasta selecionada não está mais disponível.',
+        );
+      }
+      late final ProcessResult result;
+      if (Platform.isMacOS) {
+        result = await Process.run('open', [path]);
+      } else if (Platform.isWindows) {
+        result = await Process.run('explorer.exe', [path]);
+      } else if (Platform.isLinux) {
+        result = await Process.run('xdg-open', [path]);
+      } else {
+        throw const StorageSettingsException(
+          'Abrir pasta não está disponível nesta plataforma.',
+        );
+      }
+      if (result.exitCode != 0) {
+        throw const StorageSettingsException(
+          'Não foi possível abrir a pasta selecionada.',
+        );
+      }
+    } on StorageSettingsException catch (error) {
+      if (context.mounted) _showMessage(context, error.message);
+    } catch (error, stackTrace) {
+      debugPrint('[See2Sound] Erro ao abrir pasta: $error');
+      debugPrint('$stackTrace');
+      if (context.mounted) {
+        _showMessage(context, 'Não foi possível abrir a pasta selecionada.');
+      }
+    }
+  }
+
+  void _showMessage(BuildContext context, String message) {
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message)));
   }
 
   @override
   Widget build(BuildContext context) {
-    final text = AppColors.textPrimaryFor(highContrast);
-    final secondary = AppColors.textSecondaryFor(highContrast);
-
-    return Align(
-      alignment: Alignment.topCenter,
-      child: SingleChildScrollView(
-        padding: const EdgeInsets.fromLTRB(64, 72, 64, 48),
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 920),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'Configurações',
-                style: TextStyle(
-                  color: text,
-                  fontSize: 34,
-                  fontWeight: FontWeight.w800,
-                ),
-              ),
-
-              const SizedBox(height: 8),
-
-              Text(
-                'Ajuste a experiência visual, a narração da interface e o local de salvamento.',
-                style: TextStyle(color: secondary, fontSize: 16, height: 1.35),
-              ),
-
-              const SizedBox(height: 30),
-
-              _SettingsCard(
-                title: 'Armazenamento',
-                highContrast: highContrast,
-                child: ListenableBuilder(
-                  listenable: storageSettingsService,
-                  builder: (context, _) => _SaveLocationRow(
+    final highContrast = settings.highContrast;
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        return Align(
+          alignment: Alignment.topCenter,
+          child: SingleChildScrollView(
+            padding: AppSpacing.pagePadding(constraints.maxWidth),
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 980),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  SectionTitle(
+                    title: 'Configurações',
+                    subtitle:
+                        'Personalize leitura, navegação, movimento, áudio e armazenamento.',
                     highContrast: highContrast,
-                    visualFocus: visualFocus,
-                    selectedPath: storageSettingsService.directoryPath,
-                    onBrowse: () => _selectStorageDirectory(context),
                   ),
-                ),
-              ),
-
-              const SizedBox(height: 16),
-
-              _SettingsCard(
-                title: 'Audiodescrição da interface',
-                highContrast: highContrast,
-                child: Column(
-                  children: [
-                    _SwitchSettingRow(
-                      order: 5,
-                      title: 'Audiodescrição',
-                      description:
-                          'Narra botões, telas e ações selecionadas durante a navegação pelo app.',
-                      value: audioDescriptionMode,
-                      highContrast: highContrast,
-                      visualFocus: visualFocus,
-                      onChanged: onAudioDescriptionModeChanged,
-                    ),
-
-                    if (audioDescriptionMode) ...[
-                      const SizedBox(height: 18),
-                      _SoftDivider(highContrast: highContrast),
-                      const SizedBox(height: 18),
-
-                      _SliderSettingRow(
-                        order: 6,
-                        title: 'Volume da narração',
-                        value: narrationVolume,
-                        highContrast: highContrast,
-                        onChanged: onNarrationVolumeChanged,
+                  const SizedBox(height: AppSpacing.xl),
+                  _SettingsSection(
+                    title: 'Armazenamento',
+                    icon: Icons.folder_outlined,
+                    settings: settings,
+                    child: ListenableBuilder(
+                      listenable: storageSettingsService,
+                      builder: (context, _) => _StorageSetting(
+                        path: storageSettingsService.directoryPath,
+                        onChoose: () => _selectStorageDirectory(context),
+                        onOpen: storageSettingsService.hasDirectory
+                            ? () => _openStorageDirectory(context)
+                            : null,
                       ),
-
-                      const SizedBox(height: 14),
-
-                      _SliderSettingRow(
-                        order: 7,
-                        title: 'Velocidade da fala',
-                        value: speechSpeed,
-                        highContrast: highContrast,
-                        onChanged: onSpeechSpeedChanged,
-                      ),
-                    ],
-                  ],
-                ),
-              ),
-
-              const SizedBox(height: 16),
-
-              _SettingsCard(
-                title: 'Acessibilidade visual',
-                highContrast: highContrast,
-                child: Column(
-                  children: [
-                    _SwitchSettingRow(
-                      order: 8,
-                      title: 'Foco visual',
-                      description:
-                          'Mostra bordas de destaque nos elementos selecionados por Tab.',
-                      value: visualFocus,
-                      highContrast: highContrast,
-                      visualFocus: visualFocus,
-                      onChanged: onVisualFocusChanged,
                     ),
-
-                    const SizedBox(height: 18),
-
-                    _SwitchSettingRow(
-                      order: 9,
-                      title: 'Alto contraste',
-                      description:
-                          'Remove gradientes e usa cores fortes para melhorar a leitura.',
-                      value: highContrast,
-                      highContrast: highContrast,
-                      visualFocus: visualFocus,
-                      onChanged: onHighContrastChanged,
-                    ),
-                  ],
-                ),
-              ),
-
-              const SizedBox(height: 16),
-
-              _SettingsCard(
-                title: 'Sobre',
-                highContrast: highContrast,
-                child: Row(
-                  children: [
-                    Icon(
-                      Icons.info_outline,
-                      color: AppColors.accentFor(highContrast),
-                      size: 22,
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Text(
-                        'See2Sound ver 0.1 — aplicação em desenvolvimento para geração de audiodescrição contextualizada.',
-                        style: TextStyle(
-                          color: secondary,
-                          fontSize: 14,
-                          height: 1.35,
+                  ),
+                  _SettingsSection(
+                    title: 'Acessibilidade visual',
+                    icon: Icons.visibility_outlined,
+                    settings: settings,
+                    child: Column(
+                      children: [
+                        _SwitchRow(
+                          title: 'Alto contraste',
+                          description:
+                              'Usa fundo preto, bordas claras e cores de estado mais intensas.',
+                          value: settings.highContrast,
+                          onChanged: settings.setHighContrast,
                         ),
-                      ),
+                        const _SettingDivider(),
+                        _SwitchRow(
+                          title: 'Foco visual',
+                          description:
+                              'Destaca somente o controle que está com foco de teclado.',
+                          value: settings.visualFocus,
+                          onChanged: settings.setVisualFocus,
+                        ),
+                        const _SettingDivider(),
+                        _SwitchRow(
+                          title: 'Interface simplificada',
+                          description:
+                              'Reduz sombras, gradientes e efeitos decorativos sem esconder funções.',
+                          value: settings.simplifiedInterface,
+                          onChanged: settings.setSimplifiedInterface,
+                        ),
+                      ],
                     ),
-                  ],
-                ),
+                  ),
+                  _SettingsSection(
+                    title: 'Texto e interface',
+                    icon: Icons.text_fields,
+                    settings: settings,
+                    child: _ChoiceSetting<AppTextSize>(
+                      title: 'Tamanho do texto',
+                      description: 'Ajusta o texto em todo o aplicativo.',
+                      value: settings.textSize,
+                      values: AppTextSize.values,
+                      label: (value) => value.label,
+                      onChanged: settings.setTextSize,
+                    ),
+                  ),
+                  _SettingsSection(
+                    title: 'Movimento e animações',
+                    icon: Icons.motion_photos_off_outlined,
+                    settings: settings,
+                    child: _SwitchRow(
+                      title: 'Reduzir animações',
+                      description:
+                          'Remove transições e movimentos que não são essenciais.',
+                      value: settings.reduceMotion,
+                      onChanged: settings.setReduceMotion,
+                    ),
+                  ),
+                  _SettingsSection(
+                    title: 'Áudio',
+                    icon: Icons.volume_up_outlined,
+                    settings: settings,
+                    child: Column(
+                      children: [
+                        _SwitchRow(
+                          title: 'Audiodescrição da interface',
+                          description:
+                              'Anuncia mudanças importantes, erros e conclusões. Não narra movimentos do mouse.',
+                          value: settings.interfaceNarration,
+                          onChanged: settings.setInterfaceNarration,
+                        ),
+                        if (settings.interfaceNarration) ...[
+                          const _SettingDivider(),
+                          _SliderSetting(
+                            title: 'Volume da narração',
+                            semanticValue:
+                                '${(settings.narrationVolume * 100).round()} por cento',
+                            value: settings.narrationVolume,
+                            min: 0,
+                            max: 1,
+                            divisions: 10,
+                            valueLabel:
+                                '${(settings.narrationVolume * 100).round()}%',
+                            onChanged: settings.setNarrationVolume,
+                          ),
+                          const _SettingDivider(),
+                          _ChoiceSetting<double>(
+                            title: 'Velocidade da fala',
+                            description:
+                                'Define a velocidade dos anúncios adicionais.',
+                            value: settings.speechSpeed,
+                            values: const [0.75, 1, 1.25, 1.5],
+                            label: (value) => '${value}x',
+                            onChanged: settings.setSpeechSpeed,
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                  _SettingsSection(
+                    title: 'Navegação',
+                    icon: Icons.keyboard_alt_outlined,
+                    settings: settings,
+                    child: const _ShortcutList(),
+                  ),
+                  _SettingsSection(
+                    title: 'Sobre',
+                    icon: Icons.info_outline,
+                    settings: settings,
+                    child: const Text(
+                      'See2Sound versão 1.0 — geração, reprodução e organização de audiodescrições com foco em acessibilidade.',
+                      style: AppTypography.body,
+                    ),
+                  ),
+                ],
               ),
-            ],
+            ),
           ),
-        ),
-      ),
+        );
+      },
     );
   }
 }
 
-class _SettingsCard extends StatelessWidget {
-  const _SettingsCard({
+class _SettingsSection extends StatelessWidget {
+  const _SettingsSection({
     required this.title,
-    required this.highContrast,
+    required this.icon,
+    required this.settings,
     required this.child,
   });
 
   final String title;
-  final bool highContrast;
+  final IconData icon;
+  final AppSettingsController settings;
   final Widget child;
 
   @override
   Widget build(BuildContext context) {
-    final text = AppColors.textPrimaryFor(highContrast);
-    final panel = AppColors.panelFor(highContrast);
-    final border = AppColors.borderFor(highContrast);
-
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: panel,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: border, width: highContrast ? 2 : 1),
-        boxShadow: [
-          if (!highContrast)
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.14),
-              blurRadius: 12,
-              offset: const Offset(0, 5),
-            ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              if (!highContrast)
-                Container(
-                  width: 4,
-                  height: 22,
-                  decoration: BoxDecoration(
-                    gradient: AppColors.mainGradient,
-                    borderRadius: BorderRadius.circular(999),
-                  ),
-                )
-              else
-                Container(
-                  width: 4,
-                  height: 22,
-                  decoration: BoxDecoration(
+    final highContrast = settings.highContrast;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: AppSpacing.md),
+      child: AppCard(
+        highContrast: highContrast,
+        simplified: settings.simplifiedInterface,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                ExcludeSemantics(
+                  child: Icon(
+                    icon,
                     color: AppColors.accentFor(highContrast),
-                    borderRadius: BorderRadius.circular(999),
+                    size: 24,
                   ),
                 ),
-
-              const SizedBox(width: 10),
-
-              Text(
-                title,
-                style: TextStyle(
-                  color: text,
-                  fontSize: 18,
-                  fontWeight: FontWeight.w800,
+                const SizedBox(width: AppSpacing.sm),
+                Expanded(
+                  child: Text(
+                    title,
+                    style: AppTypography.sectionTitle.copyWith(
+                      color: AppColors.textPrimaryFor(highContrast),
+                    ),
+                  ),
                 ),
-              ),
-            ],
-          ),
-
-          const SizedBox(height: 18),
-
-          child,
-        ],
+              ],
+            ),
+            const SizedBox(height: AppSpacing.lg),
+            child,
+          ],
+        ),
       ),
     );
   }
 }
 
-class _SaveLocationRow extends StatelessWidget {
-  const _SaveLocationRow({
-    required this.highContrast,
-    required this.visualFocus,
-    required this.selectedPath,
-    required this.onBrowse,
+class _StorageSetting extends StatelessWidget {
+  const _StorageSetting({
+    required this.path,
+    required this.onChoose,
+    required this.onOpen,
   });
 
-  final bool highContrast;
-  final bool visualFocus;
-  final String? selectedPath;
-  final VoidCallback onBrowse;
+  final String? path;
+  final VoidCallback onChoose;
+  final VoidCallback? onOpen;
 
   @override
   Widget build(BuildContext context) {
-    final secondary = AppColors.textSecondaryFor(highContrast);
-    final border = AppColors.borderFor(highContrast);
-
-    return Row(
+    final hasPath = path != null && path!.isNotEmpty;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Expanded(
+        const Text('Local das audiodescrições', style: AppTypography.label),
+        const SizedBox(height: AppSpacing.xs),
+        Semantics(
+          readOnly: true,
+          label: hasPath
+              ? 'Pasta selecionada: $path'
+              : 'Nenhuma pasta selecionada',
           child: Container(
-            height: 48,
-            alignment: Alignment.centerLeft,
-            padding: const EdgeInsets.symmetric(horizontal: 14),
+            width: double.infinity,
+            padding: const EdgeInsets.all(AppSpacing.md),
             decoration: BoxDecoration(
-              color: AppColors.backgroundFor(highContrast),
-              borderRadius: BorderRadius.circular(10),
-              border: Border.all(color: border, width: highContrast ? 2 : 1),
+              color: Theme.of(context).scaffoldBackgroundColor,
+              borderRadius: AppRadius.control,
+              border: Border.all(color: Theme.of(context).colorScheme.outline),
             ),
-            child: Text(
-              selectedPath ?? 'Nenhuma pasta selecionada',
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(color: secondary, fontSize: 14),
+            child: SelectableText(
+              path ?? 'Nenhuma pasta selecionada',
+              style: TextStyle(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
             ),
           ),
         ),
-
-        const SizedBox(width: 14),
-
-        FocusTraversalOrder(
-          order: const NumericFocusOrder(4),
-          child: _GradientButton(
-            label: 'Procurar',
-            icon: Icons.folder_open,
-            highContrast: highContrast,
-            visualFocus: visualFocus,
-            onPressed: onBrowse,
-          ),
+        const SizedBox(height: AppSpacing.md),
+        Wrap(
+          spacing: AppSpacing.sm,
+          runSpacing: AppSpacing.sm,
+          children: [
+            FilledButton.icon(
+              onPressed: onChoose,
+              icon: const Icon(Icons.folder_open),
+              label: Text(hasPath ? 'Alterar' : 'Escolher pasta'),
+            ),
+            if (hasPath)
+              OutlinedButton.icon(
+                onPressed: onOpen,
+                icon: const Icon(Icons.open_in_new),
+                label: const Text('Abrir pasta'),
+              ),
+          ],
         ),
       ],
     );
   }
 }
 
-class _SwitchSettingRow extends StatelessWidget {
-  const _SwitchSettingRow({
-    required this.order,
+class _SwitchRow extends StatelessWidget {
+  const _SwitchRow({
     required this.title,
     required this.description,
     required this.value,
-    required this.highContrast,
-    required this.visualFocus,
     required this.onChanged,
   });
 
-  final double order;
   final String title;
   final String description;
   final bool value;
-  final bool highContrast;
-  final bool visualFocus;
   final ValueChanged<bool> onChanged;
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      children: [
-        Expanded(
-          child: _SettingTextBlock(
-            title: title,
-            description: description,
-            highContrast: highContrast,
+    return Semantics(
+      toggled: value,
+      label: title,
+      hint: description,
+      child: ExcludeSemantics(
+        child: SwitchListTile.adaptive(
+          contentPadding: EdgeInsets.zero,
+          title: Text(title, style: AppTypography.label),
+          subtitle: Padding(
+            padding: const EdgeInsets.only(top: AppSpacing.xxs),
+            child: Text(description, style: AppTypography.body),
           ),
+          value: value,
+          onChanged: onChanged,
         ),
+      ),
+    );
+  }
+}
 
-        const SizedBox(width: 18),
+class _ChoiceSetting<T> extends StatelessWidget {
+  const _ChoiceSetting({
+    required this.title,
+    required this.description,
+    required this.value,
+    required this.values,
+    required this.label,
+    required this.onChanged,
+  });
 
-        FocusTraversalOrder(
-          order: NumericFocusOrder(order),
-          child: _GradientSwitch(
+  final String title;
+  final String description;
+  final T value;
+  final List<T> values;
+  final String Function(T value) label;
+  final ValueChanged<T> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(title, style: AppTypography.label),
+        const SizedBox(height: AppSpacing.xxs),
+        Text(description, style: AppTypography.body),
+        const SizedBox(height: AppSpacing.md),
+        Wrap(
+          spacing: AppSpacing.xs,
+          runSpacing: AppSpacing.xs,
+          children: values
+              .map(
+                (option) => ChoiceChip(
+                  label: Text(label(option)),
+                  selected: option == value,
+                  onSelected: (_) => onChanged(option),
+                ),
+              )
+              .toList(),
+        ),
+      ],
+    );
+  }
+}
+
+class _SliderSetting extends StatelessWidget {
+  const _SliderSetting({
+    required this.title,
+    required this.semanticValue,
+    required this.value,
+    required this.min,
+    required this.max,
+    required this.divisions,
+    required this.valueLabel,
+    required this.onChanged,
+  });
+
+  final String title;
+  final String semanticValue;
+  final double value;
+  final double min;
+  final double max;
+  final int divisions;
+  final String valueLabel;
+  final ValueChanged<double> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Expanded(child: Text(title, style: AppTypography.label)),
+            Text(valueLabel, style: AppTypography.label),
+          ],
+        ),
+        Semantics(
+          label: title,
+          value: semanticValue,
+          child: Slider(
             value: value,
-            highContrast: highContrast,
-            visualFocus: visualFocus,
+            min: min,
+            max: max,
+            divisions: divisions,
+            label: valueLabel,
             onChanged: onChanged,
           ),
         ),
@@ -401,289 +495,49 @@ class _SwitchSettingRow extends StatelessWidget {
   }
 }
 
-class _SliderSettingRow extends StatelessWidget {
-  const _SliderSettingRow({
-    required this.order,
-    required this.title,
-    required this.value,
-    required this.highContrast,
-    required this.onChanged,
-  });
-
-  final double order;
-  final String title;
-  final double value;
-  final bool highContrast;
-  final ValueChanged<double> onChanged;
+class _ShortcutList extends StatelessWidget {
+  const _ShortcutList();
 
   @override
   Widget build(BuildContext context) {
-    final text = AppColors.textPrimaryFor(highContrast);
-    final secondary = AppColors.textSecondaryFor(highContrast);
-    final accent = AppColors.accentFor(highContrast);
-
-    return Row(
-      children: [
-        Expanded(
-          child: Text(
-            title,
-            style: TextStyle(
-              color: text,
-              fontSize: 15,
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-        ),
-
-        const SizedBox(width: 24),
-
-        SizedBox(
-          width: 310,
-          child: Row(
-            children: [
-              Expanded(
-                child: FocusTraversalOrder(
-                  order: NumericFocusOrder(order),
-                  child: SliderTheme(
-                    data: SliderTheme.of(context).copyWith(
-                      activeTrackColor: highContrast
-                          ? accent
-                          : AppColors.gradientMiddle,
-                      inactiveTrackColor: secondary.withValues(
-                        alpha: highContrast ? 0.4 : 0.18,
-                      ),
-                      thumbColor: highContrast
-                          ? accent
-                          : AppColors.gradientStart,
-                      overlayColor: accent.withValues(alpha: 0.16),
-                      trackHeight: 6,
-                    ),
-                    child: Slider(value: value, onChanged: onChanged),
-                  ),
-                ),
-              ),
-
-              SizedBox(
-                width: 46,
-                child: Text(
-                  '${(value * 100).round()}%',
-                  textAlign: TextAlign.right,
-                  style: TextStyle(
-                    color: secondary,
-                    fontSize: 13,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _SettingTextBlock extends StatelessWidget {
-  const _SettingTextBlock({
-    required this.title,
-    required this.description,
-    required this.highContrast,
-  });
-
-  final String title;
-  final String description;
-  final bool highContrast;
-
-  @override
-  Widget build(BuildContext context) {
-    final text = AppColors.textPrimaryFor(highContrast);
-    final secondary = AppColors.textSecondaryFor(highContrast);
-
+    const shortcuts = [
+      ('Tab', 'Próximo elemento'),
+      ('Shift + Tab', 'Elemento anterior'),
+      ('Enter', 'Ativar controle'),
+      ('Espaço', 'Ativar ou reproduzir/pausar no player'),
+      ('← / →', 'Retroceder ou avançar no player'),
+      ('Esc', 'Fechar diálogo ou menu'),
+    ];
     return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          title,
-          style: TextStyle(
-            color: text,
-            fontSize: 15,
-            fontWeight: FontWeight.w800,
+        for (final shortcut in shortcuts)
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: AppSpacing.xs),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                SizedBox(
+                  width: 120,
+                  child: Text(shortcut.$1, style: AppTypography.label),
+                ),
+                const SizedBox(width: AppSpacing.md),
+                Expanded(child: Text(shortcut.$2, style: AppTypography.body)),
+              ],
+            ),
           ),
-        ),
-        const SizedBox(height: 4),
-        Text(
-          description,
-          style: TextStyle(color: secondary, fontSize: 13, height: 1.3),
-        ),
       ],
     );
   }
 }
 
-class _GradientSwitch extends StatefulWidget {
-  const _GradientSwitch({
-    required this.value,
-    required this.highContrast,
-    required this.visualFocus,
-    required this.onChanged,
-  });
-
-  final bool value;
-  final bool highContrast;
-  final bool visualFocus;
-  final ValueChanged<bool> onChanged;
-
-  @override
-  State<_GradientSwitch> createState() => _GradientSwitchState();
-}
-
-class _GradientSwitchState extends State<_GradientSwitch> {
-  bool focused = false;
+class _SettingDivider extends StatelessWidget {
+  const _SettingDivider();
 
   @override
   Widget build(BuildContext context) {
-    final accent = AppColors.accentFor(widget.highContrast);
-    final border = AppColors.borderFor(widget.highContrast);
-
-    return FocusableActionDetector(
-      onShowFocusHighlight: (value) {
-        setState(() {
-          focused = value;
-        });
-      },
-      actions: {
-        ActivateIntent: CallbackAction<ActivateIntent>(
-          onInvoke: (_) {
-            widget.onChanged(!widget.value);
-            return null;
-          },
-        ),
-      },
-      child: Semantics(
-        button: true,
-        checked: widget.value,
-        child: GestureDetector(
-          onTap: () => widget.onChanged(!widget.value),
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 160),
-            width: 56,
-            height: 30,
-            padding: const EdgeInsets.all(3),
-            decoration: BoxDecoration(
-              color: widget.highContrast
-                  ? (widget.value ? accent : Colors.black)
-                  : null,
-              gradient: widget.highContrast
-                  ? null
-                  : widget.value
-                  ? AppColors.mainGradient
-                  : null,
-              borderRadius: BorderRadius.circular(999),
-              border: Border.all(
-                color: widget.visualFocus && focused
-                    ? accent
-                    : widget.value
-                    ? accent
-                    : border,
-                width: widget.visualFocus && focused ? 3 : 1,
-              ),
-            ),
-            child: AnimatedAlign(
-              duration: const Duration(milliseconds: 160),
-              curve: Curves.easeOut,
-              alignment: widget.value
-                  ? Alignment.centerRight
-                  : Alignment.centerLeft,
-              child: Container(
-                width: 22,
-                height: 22,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: widget.highContrast
-                      ? (widget.value ? Colors.black : Colors.white)
-                      : Colors.white,
-                ),
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _GradientButton extends StatelessWidget {
-  const _GradientButton({
-    required this.label,
-    required this.icon,
-    required this.highContrast,
-    required this.visualFocus,
-    required this.onPressed,
-  });
-
-  final String label;
-  final IconData icon;
-  final bool highContrast;
-  final bool visualFocus;
-  final VoidCallback onPressed;
-
-  @override
-  Widget build(BuildContext context) {
-    final accent = AppColors.accentFor(highContrast);
-
-    return Material(
-      color: Colors.transparent,
-      borderRadius: BorderRadius.circular(10),
-      child: InkWell(
-        onTap: onPressed,
-        borderRadius: BorderRadius.circular(10),
-        child: Ink(
-          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 15),
-          decoration: BoxDecoration(
-            color: highContrast ? accent : null,
-            gradient: highContrast ? null : AppColors.mainGradient,
-            borderRadius: BorderRadius.circular(10),
-            border: visualFocus
-                ? Border.all(color: accent, width: highContrast ? 2 : 1)
-                : null,
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(
-                icon,
-                color: highContrast ? Colors.black : Colors.white,
-                size: 20,
-              ),
-              const SizedBox(width: 8),
-              Text(
-                label,
-                style: TextStyle(
-                  color: highContrast ? Colors.black : Colors.white,
-                  fontSize: 14,
-                  fontWeight: FontWeight.w800,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _SoftDivider extends StatelessWidget {
-  const _SoftDivider({required this.highContrast});
-
-  final bool highContrast;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      height: highContrast ? 2 : 1,
-      color: AppColors.borderFor(
-        highContrast,
-      ).withValues(alpha: highContrast ? 1 : 0.6),
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: AppSpacing.sm),
+      child: Divider(color: Theme.of(context).colorScheme.outline),
     );
   }
 }

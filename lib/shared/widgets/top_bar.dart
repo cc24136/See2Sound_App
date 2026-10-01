@@ -29,10 +29,7 @@ class TopBar extends StatelessWidget {
       decoration: BoxDecoration(
         color: AppColors.topBarFor(highContrast),
         border: Border(
-          bottom: BorderSide(
-            color: border,
-            width: highContrast ? 2 : 1,
-          ),
+          bottom: BorderSide(color: border, width: highContrast ? 2 : 1),
         ),
       ),
       child: Row(
@@ -143,26 +140,24 @@ class _TopBarButton extends StatelessWidget {
       order: NumericFocusOrder(order),
       child: TextButton(
         onPressed: onTap,
-        style: TextButton.styleFrom(
-          foregroundColor: selected ? accent : text,
-          backgroundColor: shouldShowSelectedBox
-              ? accent.withValues(alpha: highContrast ? 0.24 : 0.12)
-              : Colors.transparent,
-          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(8),
-            side: shouldShowSelectedBox
-                ? BorderSide(
-                    color: accent,
-                    width: highContrast ? 2 : 1,
-                  )
-                : BorderSide.none,
-          ),
-        ).copyWith(
-          overlayColor: WidgetStatePropertyAll(
-            visualFocus ? accent.withValues(alpha: 0.18) : null,
-          ),
-        ),
+        style:
+            TextButton.styleFrom(
+              foregroundColor: selected ? accent : text,
+              backgroundColor: shouldShowSelectedBox
+                  ? accent.withValues(alpha: highContrast ? 0.24 : 0.12)
+                  : Colors.transparent,
+              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(8),
+                side: shouldShowSelectedBox
+                    ? BorderSide(color: accent, width: highContrast ? 2 : 1)
+                    : BorderSide.none,
+              ),
+            ).copyWith(
+              overlayColor: WidgetStatePropertyAll(
+                visualFocus ? accent.withValues(alpha: 0.18) : null,
+              ),
+            ),
         child: shouldUseGradientText
             ? GradientText(
                 text: label,

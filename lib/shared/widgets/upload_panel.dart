@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../core/constants/app_colors.dart';
+import '../../core/theme/app_design_tokens.dart';
 
 class UploadPanel extends StatefulWidget {
   const UploadPanel({
@@ -8,6 +9,8 @@ class UploadPanel extends StatefulWidget {
     required this.highContrast,
     required this.visualFocus,
     this.enabled = true,
+    this.reduceMotion = false,
+    this.simplifiedInterface = false,
     this.title = 'Importar Arquivo',
     this.subtitle =
         'Selecione um vídeo para iniciar a geração da audiodescrição',
@@ -19,6 +22,8 @@ class UploadPanel extends StatefulWidget {
   final bool highContrast;
   final bool visualFocus;
   final bool enabled;
+  final bool reduceMotion;
+  final bool simplifiedInterface;
   final String title;
   final String subtitle;
   final String hint;
@@ -46,7 +51,9 @@ class _UploadPanelState extends State<UploadPanel> {
       button: true,
       enabled: widget.enabled,
       label: widget.title,
-      hint: widget.enabled ? widget.subtitle : 'Aguarde o processamento atual',
+      hint: widget.enabled
+          ? '${widget.subtitle}. ${widget.hint}'
+          : 'Aguarde o processamento atual',
       child: FocusTraversalOrder(
         order: const NumericFocusOrder(4),
         child: FocusableActionDetector(
@@ -76,8 +83,8 @@ class _UploadPanelState extends State<UploadPanel> {
             onTap: widget.enabled ? widget.onTap : null,
             borderRadius: BorderRadius.circular(18),
             child: AnimatedContainer(
-              duration: const Duration(milliseconds: 140),
-              constraints: const BoxConstraints(minHeight: 360),
+              duration: AppDurations.adaptive(widget.reduceMotion),
+              constraints: const BoxConstraints(minHeight: 300),
               width: double.infinity,
               decoration: BoxDecoration(
                 color: isHovered && widget.enabled
@@ -88,13 +95,15 @@ class _UploadPanelState extends State<UploadPanel> {
                   color: showFocus ? accent : border,
                   width: showFocus || widget.highContrast ? 3 : 1,
                 ),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.35),
-                    blurRadius: 24,
-                    offset: const Offset(0, 8),
-                  ),
-                ],
+                boxShadow: widget.highContrast || widget.simplifiedInterface
+                    ? null
+                    : [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.28),
+                          blurRadius: 22,
+                          offset: const Offset(0, 8),
+                        ),
+                      ],
               ),
               padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 24),
               child: Column(
@@ -102,20 +111,20 @@ class _UploadPanelState extends State<UploadPanel> {
                 children: [
                   ShaderMask(
                     shaderCallback: (bounds) {
-                      return widget.highContrast
+                      return widget.highContrast || widget.simplifiedInterface
                           ? LinearGradient(
                               colors: [accent, accent],
                             ).createShader(bounds)
                           : AppColors.mainGradient.createShader(bounds);
                     },
-                    child: Icon(widget.icon, size: 82, color: Colors.white),
+                    child: Icon(widget.icon, size: 68, color: Colors.white),
                   ),
                   const SizedBox(height: 20),
                   Text(
                     widget.title,
                     style: TextStyle(
                       color: text,
-                      fontSize: 34,
+                      fontSize: 28,
                       fontWeight: FontWeight.w800,
                     ),
                   ),

@@ -1,8 +1,15 @@
+import 'dart:async';
+import 'dart:io';
+
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:video_player/video_player.dart';
 
 import '../../core/constants/app_colors.dart';
+import '../../core/accessibility/interface_narration_service.dart';
 import '../../core/storage/storage_settings_service.dart';
+import '../../core/theme/app_design_tokens.dart';
+import '../../shared/widgets/app_components.dart';
 import '../../shared/widgets/section_title.dart';
 import '../../shared/widgets/upload_panel.dart';
 import '../library/services/library_service.dart';
@@ -16,14 +23,22 @@ class GeneratePage extends StatefulWidget {
     required this.visualFocus,
     required this.storageSettingsService,
     required this.libraryService,
+    required this.reduceMotion,
+    required this.simplifiedInterface,
+    required this.narrationService,
     required this.onOpenSettings,
+    required this.onOpenLibrary,
   });
 
   final bool highContrast;
   final bool visualFocus;
   final StorageSettingsService storageSettingsService;
   final LibraryService libraryService;
+  final bool reduceMotion;
+  final bool simplifiedInterface;
+  final InterfaceNarrationService narrationService;
   final VoidCallback onOpenSettings;
+  final VoidCallback onOpenLibrary;
 
   @override
   State<GeneratePage> createState() => _GeneratePageState();
@@ -31,6 +46,8 @@ class GeneratePage extends StatefulWidget {
 
 class _GeneratePageState extends State<GeneratePage> {
   late final GenerationController _controller;
+  int? _selectedFileSize;
+  GenerationUiState? _lastAnnouncedState;
 
   @override
   void initState() {
@@ -42,7 +59,16 @@ class _GeneratePageState extends State<GeneratePage> {
   }
 
   void _refresh() {
-    if (mounted) setState(() {});
+    if (!mounted) return;
+    setState(() {});
+    if (_lastAnnouncedState == _controller.state) return;
+    _lastAnnouncedState = _controller.state;
+    if (_controller.state == GenerationUiState.ready ||
+        _controller.state == GenerationUiState.error) {
+      unawaited(
+        widget.narrationService.announce(context, _controller.statusMessage),
+      );
+    }
   }
 
   @override
@@ -74,11 +100,34 @@ class _GeneratePageState extends State<GeneratePage> {
         return;
       }
 
-      await _controller.startGeneration(videoPath: path, filename: file.name);
+      final fileSize = await File(path).length();
+      if (!mounted) return;
+      setState(() => _selectedFileSize = fileSize);
+      final duration = await _readDuration(path);
+      if (!mounted) return;
+      await _controller.startGeneration(
+        videoPath: path,
+        filename: file.name,
+        videoDuration: duration,
+      );
     } on Object {
       if (!mounted) return;
       _controller.selectionCancelled();
       _showMessage('Não foi possível abrir o seletor de arquivos.');
+    }
+  }
+
+  Future<Duration?> _readDuration(String path) async {
+    final video = VideoPlayerController.file(File(path));
+    try {
+      await video.initialize();
+      return video.value.duration;
+    } catch (error, stackTrace) {
+      debugPrint('[See2Sound] Não foi possível ler a duração do vídeo: $error');
+      debugPrint('$stackTrace');
+      return null;
+    } finally {
+      await video.dispose();
     }
   }
 
@@ -110,76 +159,94 @@ class _GeneratePageState extends State<GeneratePage> {
 
   @override
   Widget build(BuildContext context) {
-    final panel = AppColors.panelFor(widget.highContrast);
-    final border = AppColors.borderFor(widget.highContrast);
-    final secondary = AppColors.textSecondaryFor(widget.highContrast);
-    final accent = AppColors.accentFor(widget.highContrast);
-
-    return Align(
-      alignment: Alignment.topCenter,
-      child: SingleChildScrollView(
-        padding: const EdgeInsets.fromLTRB(64, 86, 64, 48),
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 1080),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              SectionTitle(
-                title: 'Bem-vindo ao See2Sound',
-                subtitle:
-                    'Importe um novo arquivo para gerar uma nova audiodescrição.',
-                highContrast: widget.highContrast,
-                textAlign: TextAlign.center,
-                crossAxisAlignment: CrossAxisAlignment.center,
-              ),
-              const SizedBox(height: 42),
-              ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 900),
-                child: UploadPanel(
+    return LayoutBuilder(
+      builder: (context, constraints) => Align(
+        alignment: Alignment.topCenter,
+        child: SingleChildScrollView(
+          padding: AppSpacing.pagePadding(constraints.maxWidth),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 960),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                SectionTitle(
+                  title: 'Gerar audiodescrição',
+                  subtitle: 'Selecione um vídeo para começar.',
+                  highContrast: widget.highContrast,
+                ),
+                const SizedBox(height: AppSpacing.xl),
+                UploadPanel(
                   highContrast: widget.highContrast,
                   visualFocus: widget.visualFocus,
+                  reduceMotion:
+                      widget.reduceMotion ||
+                      MediaQuery.disableAnimationsOf(context),
+                  simplifiedInterface: widget.simplifiedInterface,
                   enabled: !_controller.isBusy,
                   title: _controller.state == GenerationUiState.ready
-                      ? 'Importar outro arquivo'
-                      : 'Importar Arquivo',
+                      ? 'Selecionar outro vídeo'
+                      : 'Selecionar vídeo',
                   subtitle: _controller.filename == null
-                      ? 'Selecione um vídeo para iniciar a geração da audiodescrição'
-                      : _controller.filename!,
+                      ? 'Clique ou use o teclado para escolher um arquivo'
+                      : _selectedFileDescription(),
                   hint: _controller.isBusy
                       ? 'Aguarde a conclusão do processamento'
-                      : 'Pressione Enter ou Espaço para selecionar',
+                      : 'Enter ou Espaço para selecionar • MP4, MOV, AVI, MKV, WEBM e M4V',
                   onTap: _selectVideo,
                 ),
-              ),
-              if (_controller.state != GenerationUiState.idle) ...[
-                const SizedBox(height: 24),
-                ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 900),
-                  child: _GenerationStatusPanel(
+                if (_controller.state != GenerationUiState.idle) ...[
+                  const SizedBox(height: AppSpacing.lg),
+                  _GenerationStatusPanel(
                     controller: _controller,
                     highContrast: widget.highContrast,
                     visualFocus: widget.visualFocus,
+                    simplifiedInterface: widget.simplifiedInterface,
                     onPlay: _openPlayer,
                     onOpenSettings: widget.onOpenSettings,
+                    onOpenLibrary: widget.onOpenLibrary,
+                    onGenerateAnother: _selectVideo,
                   ),
-                ),
-              ],
-              const SizedBox(height: 24),
-              ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 900),
-                child: _FormatInfoBar(
-                  panel: panel,
-                  border: border,
-                  secondary: secondary,
-                  accent: accent,
+                ],
+                const SizedBox(height: AppSpacing.lg),
+                AppStatusMessage(
+                  type: AppMessageType.information,
+                  title: 'Formatos aceitos',
+                  message:
+                      'MP4, MOV, AVI, MKV, WEBM e M4V. O áudio final inclui o som original e a audiodescrição.',
                   highContrast: widget.highContrast,
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),
     );
+  }
+
+  String _selectedFileDescription() {
+    final parts = <String>[_controller.filename ?? 'Vídeo selecionado'];
+    if (_selectedFileSize != null) parts.add(_formatBytes(_selectedFileSize!));
+    final duration = _controller.videoDuration;
+    if (duration != null) parts.add(_formatDuration(duration));
+    return parts.join(' • ');
+  }
+
+  String _formatBytes(int bytes) {
+    if (bytes >= 1024 * 1024 * 1024) {
+      return '${(bytes / (1024 * 1024 * 1024)).toStringAsFixed(1)} GB';
+    }
+    if (bytes >= 1024 * 1024) {
+      return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
+    }
+    return '${(bytes / 1024).toStringAsFixed(1)} KB';
+  }
+
+  String _formatDuration(Duration duration) {
+    final minutes = duration.inMinutes.remainder(60).toString().padLeft(2, '0');
+    final seconds = duration.inSeconds.remainder(60).toString().padLeft(2, '0');
+    return duration.inHours > 0
+        ? '${duration.inHours}:$minutes:$seconds'
+        : '$minutes:$seconds';
   }
 }
 
@@ -188,20 +255,24 @@ class _GenerationStatusPanel extends StatelessWidget {
     required this.controller,
     required this.highContrast,
     required this.visualFocus,
+    required this.simplifiedInterface,
     required this.onPlay,
     required this.onOpenSettings,
+    required this.onOpenLibrary,
+    required this.onGenerateAnother,
   });
 
   final GenerationController controller;
   final bool highContrast;
   final bool visualFocus;
+  final bool simplifiedInterface;
   final VoidCallback onPlay;
   final VoidCallback onOpenSettings;
+  final VoidCallback onOpenLibrary;
+  final VoidCallback onGenerateAnother;
 
   @override
   Widget build(BuildContext context) {
-    final panel = AppColors.panelFor(highContrast);
-    final border = AppColors.borderFor(highContrast);
     final text = AppColors.textPrimaryFor(highContrast);
     final secondary = AppColors.textSecondaryFor(highContrast);
     final accent = AppColors.accentFor(highContrast);
@@ -211,17 +282,9 @@ class _GenerationStatusPanel extends StatelessWidget {
     return Semantics(
       liveRegion: true,
       label: controller.statusMessage,
-      child: Container(
-        width: double.infinity,
-        padding: const EdgeInsets.all(22),
-        decoration: BoxDecoration(
-          color: panel,
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(
-            color: isError ? Colors.redAccent : border,
-            width: highContrast || isError ? 2 : 1,
-          ),
-        ),
+      child: AppCard(
+        highContrast: highContrast,
+        simplified: simplifiedInterface,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -239,7 +302,11 @@ class _GenerationStatusPanel extends StatelessWidget {
                 else
                   Icon(
                     isReady ? Icons.check_circle_outline : Icons.error_outline,
-                    color: isError ? Colors.redAccent : accent,
+                    color: isError
+                        ? AppColors.errorFor(highContrast)
+                        : isReady
+                        ? AppColors.successFor(highContrast)
+                        : accent,
                     size: 26,
                   ),
                 const SizedBox(width: 14),
@@ -262,6 +329,15 @@ class _GenerationStatusPanel extends StatelessWidget {
                 style: TextStyle(color: secondary, height: 1.35),
               ),
             ],
+            if (controller.isBusy) ...[
+              const SizedBox(height: AppSpacing.md),
+              const LinearProgressIndicator(),
+              const SizedBox(height: AppSpacing.md),
+              _GenerationSteps(
+                state: controller.state,
+                highContrast: highContrast,
+              ),
+            ],
             if (isReady && controller.metadata != null) ...[
               const SizedBox(height: 16),
               _MetadataSummary(
@@ -273,27 +349,29 @@ class _GenerationStatusPanel extends StatelessWidget {
             ],
             if (isReady) ...[
               const SizedBox(height: 18),
-              FocusTraversalOrder(
-                order: const NumericFocusOrder(5),
-                child: ElevatedButton.icon(
-                  onPressed: onPlay,
-                  icon: const Icon(Icons.play_arrow),
-                  label: const Text('Reproduzir'),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: accent,
-                    foregroundColor: highContrast ? Colors.black : Colors.white,
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 22,
-                      vertical: 16,
-                    ),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(9),
-                      side: visualFocus
-                          ? BorderSide(color: accent, width: 2)
-                          : BorderSide.none,
+              Wrap(
+                spacing: AppSpacing.sm,
+                runSpacing: AppSpacing.sm,
+                children: [
+                  FocusTraversalOrder(
+                    order: const NumericFocusOrder(5),
+                    child: FilledButton.icon(
+                      onPressed: onPlay,
+                      icon: const Icon(Icons.play_arrow),
+                      label: const Text('Reproduzir'),
                     ),
                   ),
-                ),
+                  OutlinedButton.icon(
+                    onPressed: onOpenLibrary,
+                    icon: const Icon(Icons.video_library_outlined),
+                    label: const Text('Abrir biblioteca'),
+                  ),
+                  TextButton.icon(
+                    onPressed: onGenerateAnother,
+                    icon: const Icon(Icons.add),
+                    label: const Text('Gerar outra'),
+                  ),
+                ],
               ),
             ],
             if (isError) ...[
@@ -360,51 +438,74 @@ class _MetadataSummary extends StatelessWidget {
   }
 }
 
-class _FormatInfoBar extends StatelessWidget {
-  const _FormatInfoBar({
-    required this.panel,
-    required this.border,
-    required this.secondary,
-    required this.accent,
-    required this.highContrast,
-  });
+class _GenerationSteps extends StatelessWidget {
+  const _GenerationSteps({required this.state, required this.highContrast});
 
-  final Color panel;
-  final Color border;
-  final Color secondary;
-  final Color accent;
+  final GenerationUiState state;
   final bool highContrast;
+
+  int get _currentStep => switch (state) {
+    GenerationUiState.selecting => 0,
+    GenerationUiState.uploading => 1,
+    GenerationUiState.queued => 2,
+    GenerationUiState.processing => 3,
+    GenerationUiState.downloadingAudio => 4,
+    GenerationUiState.ready => 5,
+    _ => 0,
+  };
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-      decoration: BoxDecoration(
-        color: panel,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: border, width: highContrast ? 2 : 1),
-        boxShadow: [
-          if (!highContrast)
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.22),
-              blurRadius: 14,
-              offset: const Offset(0, 6),
-            ),
-        ],
-      ),
-      child: Row(
-        children: [
-          Icon(Icons.info_outline, color: accent, size: 22),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Text(
-              'Formatos aceitos: MP4, MOV, AVI, MKV, WEBM e M4V. A audiodescrição será gerada respeitando os intervalos de fala do vídeo.',
-              style: TextStyle(color: secondary, fontSize: 15, height: 1.35),
+    const labels = [
+      'Selecionando vídeo',
+      'Enviando vídeo',
+      'Aguardando processamento',
+      'Analisando cenas e áudio • gerando audiodescrição e voz',
+      'Finalizando e salvando áudio',
+    ];
+    final accent = AppColors.accentFor(highContrast);
+    final secondary = AppColors.textSecondaryFor(highContrast);
+    return Wrap(
+      spacing: AppSpacing.md,
+      runSpacing: AppSpacing.xs,
+      children: [
+        for (var index = 0; index < labels.length; index++)
+          Semantics(
+            label:
+                '${labels[index]}, ${index < _currentStep
+                    ? 'concluído'
+                    : index == _currentStep
+                    ? 'em andamento'
+                    : 'pendente'}',
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                ExcludeSemantics(
+                  child: Icon(
+                    index < _currentStep
+                        ? Icons.check_circle
+                        : index == _currentStep
+                        ? Icons.radio_button_checked
+                        : Icons.radio_button_unchecked,
+                    size: 17,
+                    color: index <= _currentStep ? accent : secondary,
+                  ),
+                ),
+                const SizedBox(width: AppSpacing.xs),
+                Text(
+                  labels[index],
+                  style: TextStyle(
+                    color: index <= _currentStep ? accent : secondary,
+                    fontSize: 13,
+                    fontWeight: index == _currentStep
+                        ? FontWeight.w700
+                        : FontWeight.w400,
+                  ),
+                ),
+              ],
             ),
           ),
-        ],
-      ),
+      ],
     );
   }
 }

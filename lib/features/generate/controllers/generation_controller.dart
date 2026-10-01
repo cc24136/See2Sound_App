@@ -49,6 +49,7 @@ class GenerationController extends ChangeNotifier {
   String? _errorMessage;
   String? _connectionMessage;
   String? _destinationDirectoryPath;
+  Duration? _videoDuration;
   bool _requiresStorageConfiguration = false;
   AudioDescriptionMetadata? _metadata;
   GenerationCreated? _created;
@@ -62,6 +63,7 @@ class GenerationController extends ChangeNotifier {
   String? get connectionMessage => _connectionMessage;
   bool get requiresStorageConfiguration => _requiresStorageConfiguration;
   AudioDescriptionMetadata? get metadata => _metadata;
+  Duration? get videoDuration => _videoDuration;
   GenerationCreated? get created => _created;
 
   bool get isBusy => switch (_state) {
@@ -99,11 +101,13 @@ class GenerationController extends ChangeNotifier {
   Future<void> startGeneration({
     required String videoPath,
     required String filename,
+    Duration? videoDuration,
   }) async {
     _pollTimer?.cancel();
     final operationId = ++_operationId;
     _videoPath = videoPath;
     _filename = filename;
+    _videoDuration = videoDuration;
     _audioPath = null;
     _jobId = null;
     _metadata = null;
@@ -155,7 +159,11 @@ class GenerationController extends ChangeNotifier {
     final videoPath = _videoPath;
     final filename = _filename;
     if (videoPath == null || filename == null) return;
-    await startGeneration(videoPath: videoPath, filename: filename);
+    await startGeneration(
+      videoPath: videoPath,
+      filename: filename,
+      videoDuration: _videoDuration,
+    );
   }
 
   Future<void> _poll(int operationId) async {
@@ -241,6 +249,7 @@ class GenerationController extends ChangeNotifier {
           originalVideoPath: videoPath,
           audioDescriptionPath: downloadedAudioPath,
           createdAt: DateTime.now(),
+          duration: _videoDuration,
           jobId: jobId,
         ),
       );

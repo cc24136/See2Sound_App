@@ -5,6 +5,9 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/constants/app_colors.dart';
+import '../../core/accessibility/interface_narration_service.dart';
+import '../../core/theme/app_design_tokens.dart';
+import '../../shared/widgets/app_components.dart';
 import '../player/player_page.dart';
 import 'models/audio_description_library_item.dart';
 import 'services/library_service.dart';
@@ -15,12 +18,18 @@ class LibraryPage extends StatefulWidget {
     required this.highContrast,
     required this.visualFocus,
     required this.libraryService,
+    required this.reduceMotion,
+    required this.simplifiedInterface,
+    required this.narrationService,
     required this.onNewVideo,
   });
 
   final bool highContrast;
   final bool visualFocus;
   final LibraryService libraryService;
+  final bool reduceMotion;
+  final bool simplifiedInterface;
+  final InterfaceNarrationService narrationService;
   final VoidCallback onNewVideo;
 
   @override
@@ -28,6 +37,9 @@ class LibraryPage extends StatefulWidget {
 }
 
 class _LibraryPageState extends State<LibraryPage> {
+  final _searchController = TextEditingController();
+  _LibrarySort _sort = _LibrarySort.newest;
+
   @override
   void initState() {
     super.initState();
@@ -50,7 +62,32 @@ class _LibraryPageState extends State<LibraryPage> {
   @override
   void dispose() {
     widget.libraryService.removeListener(_refresh);
+    _searchController.dispose();
     super.dispose();
+  }
+
+  List<AudioDescriptionLibraryItem> get _visibleItems {
+    final query = _searchController.text.trim().toLowerCase();
+    final filtered = widget.libraryService.items
+        .where(
+          (item) =>
+              query.isEmpty ||
+              item.originalFilename.toLowerCase().contains(query),
+        )
+        .toList();
+    filtered.sort(
+      (a, b) => switch (_sort) {
+        _LibrarySort.newest => b.createdAt.compareTo(a.createdAt),
+        _LibrarySort.oldest => a.createdAt.compareTo(b.createdAt),
+        _LibrarySort.name => a.originalFilename.toLowerCase().compareTo(
+          b.originalFilename.toLowerCase(),
+        ),
+        _LibrarySort.duration => (b.duration ?? Duration.zero).compareTo(
+          a.duration ?? Duration.zero,
+        ),
+      },
+    );
+    return filtered;
   }
 
   Future<void> _play(AudioDescriptionLibraryItem item) async {
@@ -272,6 +309,7 @@ class _LibraryPageState extends State<LibraryPage> {
     ScaffoldMessenger.of(
       context,
     ).showSnackBar(SnackBar(content: Text(message)));
+    unawaited(widget.narrationService.announce(context, message));
   }
 
   String _fileName(String path) => path.split(RegExp(r'[/\\]')).last;
@@ -279,97 +317,104 @@ class _LibraryPageState extends State<LibraryPage> {
   @override
   Widget build(BuildContext context) {
     final secondary = AppColors.textSecondaryFor(widget.highContrast);
-    final panel = AppColors.panelFor(widget.highContrast);
-    final border = AppColors.borderFor(widget.highContrast);
     final accent = AppColors.accentFor(widget.highContrast);
-    final items = widget.libraryService.items;
+    final items = _visibleItems;
 
-    return Align(
-      alignment: Alignment.topCenter,
-      child: SingleChildScrollView(
-        padding: const EdgeInsets.fromLTRB(64, 72, 64, 48),
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 1080),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              _LibraryHeader(
-                highContrast: widget.highContrast,
-                visualFocus: widget.visualFocus,
-                onNewVideo: widget.onNewVideo,
-              ),
-              const SizedBox(height: 28),
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(18),
-                decoration: BoxDecoration(
-                  color: panel,
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(
-                    color: border,
-                    width: widget.highContrast ? 2 : 1,
-                  ),
-                  boxShadow: [
-                    if (!widget.highContrast)
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.22),
-                        blurRadius: 16,
-                        offset: const Offset(0, 6),
-                      ),
-                  ],
+    return LayoutBuilder(
+      builder: (context, constraints) => Align(
+        alignment: Alignment.topCenter,
+        child: SingleChildScrollView(
+          padding: AppSpacing.pagePadding(constraints.maxWidth),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 1080),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _LibraryHeader(
+                  highContrast: widget.highContrast,
+                  visualFocus: widget.visualFocus,
+                  onNewVideo: widget.onNewVideo,
                 ),
-                child: !widget.libraryService.isInitialized
-                    ? _LoadingState(accent: accent, secondary: secondary)
-                    : items.isEmpty
-                    ? _EmptyLibraryState(
-                        highContrast: widget.highContrast,
-                        visualFocus: widget.visualFocus,
-                        errorMessage: widget.libraryService.loadError,
-                        onNewVideo: widget.onNewVideo,
-                      )
-                    : Column(
-                        children: [
-                          _ListHeader(highContrast: widget.highContrast),
-                          const SizedBox(height: 12),
-                          for (
-                            int index = 0;
-                            index < items.length;
-                            index++
-                          ) ...[
-                            _AudioDescriptionTile(
-                              order: 4 + index.toDouble(),
-                              item: items[index],
-                              highContrast: widget.highContrast,
-                              visualFocus: widget.visualFocus,
-                              onPrimaryAction: () => _play(items[index]),
-                              onMenuAction: (action) => unawaited(
-                                _handleMenuAction(action, items[index]),
-                              ),
-                            ),
-                            if (index != items.length - 1)
+                const SizedBox(height: 28),
+                _LibraryToolbar(
+                  controller: _searchController,
+                  sort: _sort,
+                  onSearchChanged: (_) => setState(() {}),
+                  onSortChanged: (value) => setState(() => _sort = value),
+                ),
+                const SizedBox(height: AppSpacing.md),
+                AppCard(
+                  highContrast: widget.highContrast,
+                  simplified: widget.simplifiedInterface,
+                  padding: const EdgeInsets.all(AppSpacing.md),
+                  child: !widget.libraryService.isInitialized
+                      ? _LoadingState(accent: accent, secondary: secondary)
+                      : widget.libraryService.items.isEmpty
+                      ? _EmptyLibraryState(
+                          highContrast: widget.highContrast,
+                          visualFocus: widget.visualFocus,
+                          errorMessage: widget.libraryService.loadError,
+                          onNewVideo: widget.onNewVideo,
+                        )
+                      : items.isEmpty
+                      ? AppEmptyState(
+                          icon: Icons.search_off,
+                          title: 'Nenhum resultado encontrado',
+                          message:
+                              'Tente buscar por outro nome ou altere a ordenação.',
+                          highContrast: widget.highContrast,
+                        )
+                      : Column(
+                          children: [
+                            if (constraints.maxWidth >=
+                                AppBreakpoints.compact) ...[
+                              _ListHeader(highContrast: widget.highContrast),
                               const SizedBox(height: 12),
+                            ],
+                            for (
+                              int index = 0;
+                              index < items.length;
+                              index++
+                            ) ...[
+                              _AudioDescriptionTile(
+                                order: 4 + index.toDouble(),
+                                item: items[index],
+                                highContrast: widget.highContrast,
+                                visualFocus: widget.visualFocus,
+                                compact:
+                                    constraints.maxWidth <
+                                    AppBreakpoints.compact,
+                                reduceMotion: widget.reduceMotion,
+                                onPrimaryAction: () => _play(items[index]),
+                                onMenuAction: (action) => unawaited(
+                                  _handleMenuAction(action, items[index]),
+                                ),
+                              ),
+                              if (index != items.length - 1)
+                                const SizedBox(height: 12),
+                            ],
                           ],
-                        ],
-                      ),
-              ),
-              const SizedBox(height: 18),
-              Row(
-                children: [
-                  Icon(Icons.info_outline, color: accent, size: 20),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Text(
-                      'As audiodescrições geradas aparecem aqui para reprodução, organização ou exportação.',
-                      style: TextStyle(
-                        color: secondary,
-                        fontSize: 14,
-                        height: 1.35,
+                        ),
+                ),
+                const SizedBox(height: 18),
+                Row(
+                  children: [
+                    Icon(Icons.info_outline, color: accent, size: 20),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        'As audiodescrições geradas aparecem aqui para reprodução, organização ou exportação.',
+                        style: TextStyle(
+                          color: secondary,
+                          fontSize: 14,
+                          height: 1.35,
+                        ),
                       ),
                     ),
-                  ),
-                ],
-              ),
-            ],
+                  ],
+                ),
+              ],
+            ),
           ),
         ),
       ),
@@ -392,55 +437,138 @@ class _LibraryHeader extends StatelessWidget {
   Widget build(BuildContext context) {
     final text = AppColors.textPrimaryFor(highContrast);
     final secondary = AppColors.textSecondaryFor(highContrast);
-    final accent = AppColors.accentFor(highContrast);
-
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.end,
-      children: [
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'Suas audiodescrições',
-                style: TextStyle(
-                  color: text,
-                  fontSize: 34,
-                  fontWeight: FontWeight.w800,
-                ),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final compact = constraints.maxWidth < AppBreakpoints.compact;
+        final title = Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Suas audiodescrições',
+              style: TextStyle(
+                color: text,
+                fontSize: 34,
+                fontWeight: FontWeight.w800,
               ),
-              const SizedBox(height: 8),
-              Text(
-                'Escolha um vídeo salvo para reproduzir, organizar ou exportar.',
-                style: TextStyle(color: secondary, fontSize: 17, height: 1.3),
-              ),
-            ],
-          ),
-        ),
-        FocusTraversalOrder(
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Gerencie seus vídeos e audiodescrições.',
+              style: TextStyle(color: secondary, fontSize: 17, height: 1.3),
+            ),
+          ],
+        );
+        final button = FocusTraversalOrder(
           order: const NumericFocusOrder(3),
-          child: ElevatedButton.icon(
+          child: FilledButton.icon(
             onPressed: onNewVideo,
             icon: const Icon(Icons.add),
             label: const Text('Novo vídeo'),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: accent,
-              foregroundColor: highContrast ? Colors.black : Colors.white,
-              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
-              textStyle: const TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.w800,
-              ),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(10),
-                side: visualFocus
-                    ? BorderSide(color: accent, width: highContrast ? 2 : 1)
-                    : BorderSide.none,
-              ),
-            ),
           ),
-        ),
-      ],
+        );
+        if (compact) {
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              title,
+              const SizedBox(height: AppSpacing.lg),
+              button,
+            ],
+          );
+        }
+        return Row(
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: [
+            Expanded(child: title),
+            button,
+          ],
+        );
+      },
+    );
+  }
+}
+
+enum _LibrarySort { newest, oldest, name, duration }
+
+class _LibraryToolbar extends StatelessWidget {
+  const _LibraryToolbar({
+    required this.controller,
+    required this.sort,
+    required this.onSearchChanged,
+    required this.onSortChanged,
+  });
+
+  final TextEditingController controller;
+  final _LibrarySort sort;
+  final ValueChanged<String> onSearchChanged;
+  final ValueChanged<_LibrarySort> onSortChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final search = TextField(
+          controller: controller,
+          onChanged: onSearchChanged,
+          textInputAction: TextInputAction.search,
+          decoration: InputDecoration(
+            labelText: 'Buscar audiodescrição',
+            hintText: 'Digite o nome do vídeo',
+            prefixIcon: const Icon(Icons.search),
+            suffixIcon: controller.text.isEmpty
+                ? null
+                : IconButton(
+                    tooltip: 'Limpar busca',
+                    onPressed: () {
+                      controller.clear();
+                      onSearchChanged('');
+                    },
+                    icon: const Icon(Icons.close),
+                  ),
+          ),
+        );
+        final order = DropdownButtonFormField<_LibrarySort>(
+          initialValue: sort,
+          decoration: const InputDecoration(
+            labelText: 'Ordenar por',
+            prefixIcon: Icon(Icons.sort),
+          ),
+          items: const [
+            DropdownMenuItem(
+              value: _LibrarySort.newest,
+              child: Text('Mais recentes'),
+            ),
+            DropdownMenuItem(
+              value: _LibrarySort.oldest,
+              child: Text('Mais antigas'),
+            ),
+            DropdownMenuItem(value: _LibrarySort.name, child: Text('Nome')),
+            DropdownMenuItem(
+              value: _LibrarySort.duration,
+              child: Text('Duração'),
+            ),
+          ],
+          onChanged: (value) {
+            if (value != null) onSortChanged(value);
+          },
+        );
+        if (constraints.maxWidth < AppBreakpoints.compact) {
+          return Column(
+            children: [
+              search,
+              const SizedBox(height: AppSpacing.sm),
+              order,
+            ],
+          );
+        }
+        return Row(
+          children: [
+            Expanded(flex: 2, child: search),
+            const SizedBox(width: AppSpacing.md),
+            Expanded(child: order),
+          ],
+        );
+      },
     );
   }
 }
@@ -507,7 +635,7 @@ class _EmptyLibraryState extends StatelessWidget {
             ),
             const SizedBox(height: 16),
             Text(
-              errorMessage ?? 'Nenhuma audiodescrição salva.',
+              errorMessage ?? 'Nenhuma audiodescrição ainda',
               textAlign: TextAlign.center,
               style: TextStyle(
                 color: text,
@@ -517,7 +645,7 @@ class _EmptyLibraryState extends StatelessWidget {
             ),
             const SizedBox(height: 8),
             Text(
-              'Gere uma nova audiodescrição para que ela apareça aqui.',
+              'Gere sua primeira audiodescrição para encontrá-la aqui.',
               textAlign: TextAlign.center,
               style: TextStyle(color: secondary, fontSize: 15),
             ),
@@ -525,7 +653,7 @@ class _EmptyLibraryState extends StatelessWidget {
             ElevatedButton.icon(
               onPressed: onNewVideo,
               icon: const Icon(Icons.add),
-              label: const Text('Novo vídeo'),
+              label: const Text('Gerar audiodescrição'),
               style: ElevatedButton.styleFrom(
                 backgroundColor: accent,
                 foregroundColor: highContrast ? Colors.black : Colors.white,
@@ -599,6 +727,8 @@ class _AudioDescriptionTile extends StatefulWidget {
     required this.item,
     required this.highContrast,
     required this.visualFocus,
+    required this.compact,
+    required this.reduceMotion,
     required this.onPrimaryAction,
     required this.onMenuAction,
   });
@@ -607,6 +737,8 @@ class _AudioDescriptionTile extends StatefulWidget {
   final AudioDescriptionLibraryItem item;
   final bool highContrast;
   final bool visualFocus;
+  final bool compact;
+  final bool reduceMotion;
   final VoidCallback onPrimaryAction;
   final ValueChanged<_LibraryMenuAction> onMenuAction;
 
@@ -626,6 +758,94 @@ class _AudioDescriptionTileState extends State<_AudioDescriptionTile> {
     final border = AppColors.borderFor(widget.highContrast);
     final showFocus = widget.visualFocus && focused;
 
+    if (widget.compact) {
+      return Semantics(
+        container: true,
+        label:
+            '${widget.item.originalFilename}, audiodescrição pronta, ${_formatDuration(widget.item.duration)}',
+        child: AnimatedContainer(
+          duration: AppDurations.adaptive(widget.reduceMotion),
+          padding: const EdgeInsets.all(AppSpacing.md),
+          decoration: BoxDecoration(
+            color: AppColors.backgroundFor(widget.highContrast),
+            borderRadius: AppRadius.control,
+            border: Border.all(
+              color: border,
+              width: widget.highContrast ? 2 : 1,
+            ),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  ExcludeSemantics(
+                    child: Icon(Icons.movie_outlined, color: accent, size: 30),
+                  ),
+                  const SizedBox(width: AppSpacing.sm),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          widget.item.originalFilename,
+                          style: TextStyle(
+                            color: text,
+                            fontSize: 16,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                        const SizedBox(height: AppSpacing.xxs),
+                        Text(
+                          'Audiodescrição gerada • ${_formatDate(widget.item.createdAt)}',
+                          style: TextStyle(color: secondary, fontSize: 13),
+                        ),
+                      ],
+                    ),
+                  ),
+                  _LibraryMenuButton(
+                    item: widget.item,
+                    color: secondary,
+                    onSelected: widget.onMenuAction,
+                  ),
+                ],
+              ),
+              const SizedBox(height: AppSpacing.md),
+              Wrap(
+                spacing: AppSpacing.lg,
+                runSpacing: AppSpacing.xs,
+                children: [
+                  _IconText(
+                    icon: Icons.check_circle_outline,
+                    label: 'Pronto',
+                    color: AppColors.successFor(widget.highContrast),
+                  ),
+                  _IconText(
+                    icon: Icons.schedule,
+                    label: _formatDuration(widget.item.duration),
+                    color: secondary,
+                  ),
+                ],
+              ),
+              const SizedBox(height: AppSpacing.md),
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton.icon(
+                  onPressed: widget.onPrimaryAction,
+                  icon: const Icon(Icons.play_arrow),
+                  label: Text(
+                    'Reproduzir ${widget.item.originalFilename}',
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
     return Semantics(
       label:
           '${widget.item.originalFilename}, audiodescrição pronta, ${_formatDuration(widget.item.duration)}',
@@ -644,7 +864,7 @@ class _AudioDescriptionTileState extends State<_AudioDescriptionTile> {
             ),
           },
           child: AnimatedContainer(
-            duration: const Duration(milliseconds: 140),
+            duration: AppDurations.adaptive(widget.reduceMotion),
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
             decoration: BoxDecoration(
               color: hovered
@@ -762,45 +982,10 @@ class _AudioDescriptionTileState extends State<_AudioDescriptionTile> {
                   ),
                 ),
                 const SizedBox(width: 8),
-                PopupMenuButton<_LibraryMenuAction>(
-                  tooltip: 'Mais opções para ${widget.item.originalFilename}',
+                _LibraryMenuButton(
+                  item: widget.item,
+                  color: secondary,
                   onSelected: widget.onMenuAction,
-                  icon: Icon(Icons.more_vert, color: secondary),
-                  itemBuilder: (context) => const [
-                    PopupMenuItem(
-                      value: _LibraryMenuAction.play,
-                      child: _MenuLabel(Icons.play_arrow, 'Reproduzir'),
-                    ),
-                    PopupMenuItem(
-                      value: _LibraryMenuAction.openLocation,
-                      child: _MenuLabel(Icons.folder_open, 'Abrir localização'),
-                    ),
-                    PopupMenuItem(
-                      value: _LibraryMenuAction.rename,
-                      child: _MenuLabel(
-                        Icons.drive_file_rename_outline,
-                        'Renomear',
-                      ),
-                    ),
-                    PopupMenuItem(
-                      value: _LibraryMenuAction.exportCopy,
-                      child: _MenuLabel(Icons.copy, 'Exportar/Copiar'),
-                    ),
-                    PopupMenuItem(
-                      value: _LibraryMenuAction.remove,
-                      child: _MenuLabel(
-                        Icons.remove_circle_outline,
-                        'Remover da biblioteca',
-                      ),
-                    ),
-                    PopupMenuItem(
-                      value: _LibraryMenuAction.delete,
-                      child: _MenuLabel(
-                        Icons.delete_outline,
-                        'Excluir arquivo',
-                      ),
-                    ),
-                  ],
                 ),
               ],
             ),
@@ -812,18 +997,109 @@ class _AudioDescriptionTileState extends State<_AudioDescriptionTile> {
 }
 
 class _MenuLabel extends StatelessWidget {
-  const _MenuLabel(this.icon, this.label);
+  const _MenuLabel(this.icon, this.label, {this.destructive = false});
 
   final IconData icon;
   final String label;
+  final bool destructive;
 
   @override
   Widget build(BuildContext context) {
     return Row(
       children: [
-        Icon(icon, size: 20),
+        Icon(
+          icon,
+          size: 20,
+          color: destructive ? Theme.of(context).colorScheme.error : null,
+        ),
         const SizedBox(width: 12),
-        Flexible(child: Text(label)),
+        Flexible(
+          child: Text(
+            label,
+            style: destructive
+                ? TextStyle(color: Theme.of(context).colorScheme.error)
+                : null,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _LibraryMenuButton extends StatelessWidget {
+  const _LibraryMenuButton({
+    required this.item,
+    required this.color,
+    required this.onSelected,
+  });
+
+  final AudioDescriptionLibraryItem item;
+  final Color color;
+  final ValueChanged<_LibraryMenuAction> onSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    return PopupMenuButton<_LibraryMenuAction>(
+      tooltip: 'Mais opções para ${item.originalFilename}',
+      onSelected: onSelected,
+      icon: Icon(Icons.more_vert, color: color),
+      itemBuilder: (context) => const [
+        PopupMenuItem(
+          value: _LibraryMenuAction.play,
+          child: _MenuLabel(Icons.play_arrow, 'Reproduzir'),
+        ),
+        PopupMenuItem(
+          value: _LibraryMenuAction.openLocation,
+          child: _MenuLabel(Icons.folder_open, 'Abrir localização'),
+        ),
+        PopupMenuItem(
+          value: _LibraryMenuAction.rename,
+          child: _MenuLabel(Icons.drive_file_rename_outline, 'Renomear'),
+        ),
+        PopupMenuItem(
+          value: _LibraryMenuAction.exportCopy,
+          child: _MenuLabel(Icons.ios_share_outlined, 'Exportar'),
+        ),
+        PopupMenuItem(
+          value: _LibraryMenuAction.remove,
+          child: _MenuLabel(
+            Icons.remove_circle_outline,
+            'Remover da biblioteca',
+          ),
+        ),
+        PopupMenuDivider(),
+        PopupMenuItem(
+          value: _LibraryMenuAction.delete,
+          child: _MenuLabel(
+            Icons.delete_outline,
+            'Excluir arquivo',
+            destructive: true,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _IconText extends StatelessWidget {
+  const _IconText({
+    required this.icon,
+    required this.label,
+    required this.color,
+  });
+
+  final IconData icon;
+  final String label;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        ExcludeSemantics(child: Icon(icon, color: color, size: 18)),
+        const SizedBox(width: AppSpacing.xs),
+        Text(label, style: TextStyle(color: color)),
       ],
     );
   }
