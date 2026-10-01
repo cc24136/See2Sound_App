@@ -13,6 +13,7 @@ class PlayerPage extends StatefulWidget {
     required this.filename,
     required this.highContrast,
     required this.visualFocus,
+    this.backTooltip = 'Voltar',
   });
 
   final String videoPath;
@@ -20,6 +21,7 @@ class PlayerPage extends StatefulWidget {
   final String filename;
   final bool highContrast;
   final bool visualFocus;
+  final String backTooltip;
 
   @override
   State<PlayerPage> createState() => _PlayerPageState();
@@ -77,7 +79,7 @@ class _PlayerPageState extends State<PlayerPage> {
         backgroundColor: AppColors.topBarFor(widget.highContrast),
         foregroundColor: text,
         leading: IconButton(
-          tooltip: 'Voltar para Gerar',
+          tooltip: widget.backTooltip,
           onPressed: () => Navigator.of(context).pop(),
           icon: const Icon(Icons.arrow_back),
         ),

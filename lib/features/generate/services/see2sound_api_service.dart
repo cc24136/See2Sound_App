@@ -1,8 +1,8 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
-import 'package:path_provider/path_provider.dart';
 
 import '../../../core/config/api_config.dart';
 import '../../../core/network/api_exception.dart';
@@ -10,21 +10,15 @@ import '../models/audio_description_metadata.dart';
 import '../models/generation_created.dart';
 import '../models/generation_status.dart';
 
-typedef TemporaryDirectoryProvider = Future<Directory> Function();
-
 class See2SoundApiService {
   See2SoundApiService({
     http.Client? client,
     Uri Function(String path)? uriBuilder,
-    TemporaryDirectoryProvider? temporaryDirectoryProvider,
   }) : _client = client ?? http.Client(),
-       _uriBuilder = uriBuilder ?? ApiConfig.uri,
-       _temporaryDirectoryProvider =
-           temporaryDirectoryProvider ?? getTemporaryDirectory;
+       _uriBuilder = uriBuilder ?? ApiConfig.uri;
 
   final http.Client _client;
   final Uri Function(String path) _uriBuilder;
-  final TemporaryDirectoryProvider _temporaryDirectoryProvider;
 
   Future<bool> healthCheck() async {
     final response = await _get('/health');
@@ -92,19 +86,82 @@ class See2SoundApiService {
     return AudioDescriptionMetadata.fromJson(_decodeObject(response));
   }
 
-  Future<String> downloadAudioDescription(String jobId) async {
+  Future<String> downloadAudioDescription(
+    String jobId, {
+    required String destinationDirectoryPath,
+    required String originalFilename,
+  }) async {
     final response = await _get('/api/v1/generations/$jobId/audio-description');
-    final directory = await _temporaryDirectoryProvider();
-    final file = File('${directory.path}/${jobId}_audiodescription.wav');
+    final bytes = response.bodyBytes;
+
     try {
-      await file.writeAsBytes(response.bodyBytes, flush: true);
+      final destinationDirectory = Directory(destinationDirectoryPath);
+      if (!await destinationDirectory.exists()) {
+        throw const ApiException(
+          'A pasta configurada para armazenamento não foi encontrada.',
+        );
+      }
+
+      final safeStem = _safeFileStem(originalFilename);
+      final file = await _availableAudioFile(destinationDirectory, safeStem);
+
+      debugPrint('See2Sound storage directory: ${destinationDirectory.path}');
+      debugPrint('See2Sound audio file: ${file.path}');
+      debugPrint('See2Sound audio bytes received: ${bytes.length}');
+
+      await file.writeAsBytes(bytes, flush: true);
+
+      final fileExists = await file.exists();
+      final fileSize = fileExists ? await file.length() : 0;
+      debugPrint('See2Sound audio file exists: $fileExists');
+      debugPrint('See2Sound audio file size: $fileSize bytes');
+
+      if (!fileExists || fileSize != bytes.length) {
+        throw FileSystemException(
+          'O arquivo de áudio não foi gravado completamente.',
+          file.path,
+        );
+      }
+
       return file.path;
-    } on Object catch (error) {
+    } on ApiException {
+      rethrow;
+    } on Object catch (error, stackTrace) {
+      debugPrint('See2Sound failed to save audio: $error');
+      debugPrintStack(
+        label: 'See2Sound audio save stack trace',
+        stackTrace: stackTrace,
+      );
       throw ApiException(
-        'Não foi possível salvar a audiodescrição no cache.',
+        'Não foi possível salvar a audiodescrição na pasta configurada. Verifique a permissão de escrita.',
         cause: error,
       );
     }
+  }
+
+  String _safeFileStem(String originalFilename) {
+    final fileName = originalFilename.split(RegExp(r'[/\\]')).last;
+    final extensionIndex = fileName.lastIndexOf('.');
+    final withoutExtension = extensionIndex > 0
+        ? fileName.substring(0, extensionIndex)
+        : fileName;
+    final sanitized = withoutExtension
+        .replaceAll(RegExp(r'[\\/:*?"<>|\x00-\x1F]'), '_')
+        .replaceAll(RegExp(r'[. ]+$'), '')
+        .trim();
+    return sanitized.isEmpty ? 'audiodescription' : sanitized;
+  }
+
+  Future<File> _availableAudioFile(Directory directory, String safeStem) async {
+    final separator = Platform.pathSeparator;
+    final baseName = '${safeStem}_audiodescription';
+    var file = File('${directory.path}$separator$baseName.wav');
+    var suffix = 2;
+    while (await file.exists()) {
+      file = File('${directory.path}$separator${baseName}_$suffix.wav');
+      suffix++;
+    }
+    return file;
   }
 
   Future<http.Response> _get(String path) async {

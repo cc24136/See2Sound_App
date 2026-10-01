@@ -1,15 +1,16 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+
 import '../../core/constants/app_colors.dart';
+import '../../core/storage/storage_settings_service.dart';
 import '../../shared/widgets/app_sidebar.dart';
 import '../generate/generate_page.dart';
 import '../library/library_page.dart';
+import '../library/services/library_service.dart';
 import '../settings/settings_page.dart';
 
-enum AppPage {
-  generate,
-  library,
-  settings,
-}
+enum AppPage { generate, library, settings }
 
 class AppShell extends StatefulWidget {
   const AppShell({super.key});
@@ -19,6 +20,9 @@ class AppShell extends StatefulWidget {
 }
 
 class _AppShellState extends State<AppShell> {
+  late final StorageSettingsService storageSettingsService;
+  late final LibraryService libraryService;
+
   AppPage currentPage = AppPage.generate;
 
   bool highContrast = false;
@@ -29,6 +33,33 @@ class _AppShellState extends State<AppShell> {
   bool audioDescriptionMode = true;
 
   @override
+  void initState() {
+    super.initState();
+    storageSettingsService = StorageSettingsService();
+    libraryService = LibraryService();
+    unawaited(_initializeServices());
+  }
+
+  Future<void> _initializeServices() async {
+    try {
+      await Future.wait([
+        storageSettingsService.initialize(),
+        libraryService.initialize(),
+      ]);
+    } catch (error, stackTrace) {
+      debugPrint('[See2Sound] Erro ao inicializar serviços locais: $error');
+      debugPrint('$stackTrace');
+    }
+  }
+
+  @override
+  void dispose() {
+    storageSettingsService.dispose();
+    libraryService.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     Widget page;
 
@@ -37,6 +68,13 @@ class _AppShellState extends State<AppShell> {
         page = GeneratePage(
           highContrast: highContrast,
           visualFocus: visualFocus,
+          storageSettingsService: storageSettingsService,
+          libraryService: libraryService,
+          onOpenSettings: () {
+            setState(() {
+              currentPage = AppPage.settings;
+            });
+          },
         );
         break;
 
@@ -44,6 +82,12 @@ class _AppShellState extends State<AppShell> {
         page = LibraryPage(
           highContrast: highContrast,
           visualFocus: visualFocus,
+          libraryService: libraryService,
+          onNewVideo: () {
+            setState(() {
+              currentPage = AppPage.generate;
+            });
+          },
         );
         break;
 
@@ -54,6 +98,7 @@ class _AppShellState extends State<AppShell> {
           audioDescriptionMode: audioDescriptionMode,
           narrationVolume: narrationVolume,
           speechSpeed: speechSpeed,
+          storageSettingsService: storageSettingsService,
           onHighContrastChanged: (value) {
             setState(() {
               highContrast = value;

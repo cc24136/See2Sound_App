@@ -3,6 +3,9 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 
 import '../../../core/network/api_exception.dart';
+import '../../../core/storage/storage_settings_service.dart';
+import '../../library/models/audio_description_library_item.dart';
+import '../../library/services/library_service.dart';
 import '../models/audio_description_metadata.dart';
 import '../models/generation_created.dart';
 import '../models/generation_status.dart';
@@ -22,10 +25,16 @@ enum GenerationUiState {
 class GenerationController extends ChangeNotifier {
   GenerationController({
     See2SoundApiService? apiService,
+    required StorageSettingsService storageSettingsService,
+    required LibraryService libraryService,
     this.pollInterval = const Duration(seconds: 2),
-  }) : _apiService = apiService ?? See2SoundApiService();
+  }) : _apiService = apiService ?? See2SoundApiService(),
+       _storageSettingsService = storageSettingsService,
+       _libraryService = libraryService;
 
   final See2SoundApiService _apiService;
+  final StorageSettingsService _storageSettingsService;
+  final LibraryService _libraryService;
   final Duration pollInterval;
 
   Timer? _pollTimer;
@@ -39,6 +48,8 @@ class GenerationController extends ChangeNotifier {
   String? _jobId;
   String? _errorMessage;
   String? _connectionMessage;
+  String? _destinationDirectoryPath;
+  bool _requiresStorageConfiguration = false;
   AudioDescriptionMetadata? _metadata;
   GenerationCreated? _created;
 
@@ -49,6 +60,7 @@ class GenerationController extends ChangeNotifier {
   String? get jobId => _jobId;
   String? get errorMessage => _errorMessage;
   String? get connectionMessage => _connectionMessage;
+  bool get requiresStorageConfiguration => _requiresStorageConfiguration;
   AudioDescriptionMetadata? get metadata => _metadata;
   GenerationCreated? get created => _created;
 
@@ -98,6 +110,24 @@ class GenerationController extends ChangeNotifier {
     _created = null;
     _errorMessage = null;
     _connectionMessage = null;
+    _destinationDirectoryPath = null;
+    _requiresStorageConfiguration = false;
+
+    try {
+      await _storageSettingsService.initialize();
+    } on StorageSettingsException catch (error) {
+      _fail(error.message);
+      return;
+    }
+    final configuredDirectory = _storageSettingsService.directoryPath;
+    if (configuredDirectory == null || configuredDirectory.isEmpty) {
+      _requiresStorageConfiguration = true;
+      _fail(
+        'Escolha uma pasta para salvar suas audiodescrições antes de continuar.',
+      );
+      return;
+    }
+    _destinationDirectoryPath = configuredDirectory;
     _setState(GenerationUiState.uploading);
 
     try {
@@ -187,15 +217,47 @@ class GenerationController extends ChangeNotifier {
     if (!_isCurrent(operationId)) return;
 
     try {
-      _audioPath = await _apiService.downloadAudioDescription(jobId);
+      final filename = _filename;
+      final videoPath = _videoPath;
+      final destinationDirectoryPath = _destinationDirectoryPath;
+      if (filename == null ||
+          videoPath == null ||
+          destinationDirectoryPath == null) {
+        _fail('Não foi possível identificar os arquivos desta geração.');
+        return;
+      }
+
+      final downloadedAudioPath = await _apiService.downloadAudioDescription(
+        jobId,
+        destinationDirectoryPath: destinationDirectoryPath,
+        originalFilename: filename,
+      );
       if (!_isCurrent(operationId)) return;
+
+      await _libraryService.addItem(
+        AudioDescriptionLibraryItem(
+          id: jobId,
+          originalFilename: filename,
+          originalVideoPath: videoPath,
+          audioDescriptionPath: downloadedAudioPath,
+          createdAt: DateTime.now(),
+          jobId: jobId,
+        ),
+      );
+      if (!_isCurrent(operationId)) return;
+
+      _audioPath = downloadedAudioPath;
       _setState(GenerationUiState.ready);
+    } on LibraryException catch (error) {
+      if (_isCurrent(operationId)) {
+        _fail(error.message);
+      }
     } on ApiException catch (error) {
       if (_isCurrent(operationId)) {
         _fail(
           error.statusCode == 409
               ? 'A audiodescrição ainda não está disponível.'
-              : 'Não foi possível baixar a audiodescrição. ${error.message}',
+              : error.message,
         );
       }
     } on Object {

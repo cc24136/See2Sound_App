@@ -38,6 +38,7 @@ dependencies:
   http: ^1.6.0
   just_audio: ^0.10.6
   path_provider: ^2.1.6
+  shared_preferences: ^2.5.5
   video_player: ^2.11.1
 
 dev_dependencies:

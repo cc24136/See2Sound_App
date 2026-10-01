@@ -2,8 +2,10 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/constants/app_colors.dart';
+import '../../core/storage/storage_settings_service.dart';
 import '../../shared/widgets/section_title.dart';
 import '../../shared/widgets/upload_panel.dart';
+import '../library/services/library_service.dart';
 import '../player/player_page.dart';
 import 'controllers/generation_controller.dart';
 
@@ -12,10 +14,16 @@ class GeneratePage extends StatefulWidget {
     super.key,
     required this.highContrast,
     required this.visualFocus,
+    required this.storageSettingsService,
+    required this.libraryService,
+    required this.onOpenSettings,
   });
 
   final bool highContrast;
   final bool visualFocus;
+  final StorageSettingsService storageSettingsService;
+  final LibraryService libraryService;
+  final VoidCallback onOpenSettings;
 
   @override
   State<GeneratePage> createState() => _GeneratePageState();
@@ -27,7 +35,10 @@ class _GeneratePageState extends State<GeneratePage> {
   @override
   void initState() {
     super.initState();
-    _controller = GenerationController()..addListener(_refresh);
+    _controller = GenerationController(
+      storageSettingsService: widget.storageSettingsService,
+      libraryService: widget.libraryService,
+    )..addListener(_refresh);
   }
 
   void _refresh() {
@@ -91,6 +102,7 @@ class _GeneratePageState extends State<GeneratePage> {
           filename: filename,
           highContrast: widget.highContrast,
           visualFocus: widget.visualFocus,
+          backTooltip: 'Voltar para Gerar',
         ),
       ),
     );
@@ -148,6 +160,7 @@ class _GeneratePageState extends State<GeneratePage> {
                     highContrast: widget.highContrast,
                     visualFocus: widget.visualFocus,
                     onPlay: _openPlayer,
+                    onOpenSettings: widget.onOpenSettings,
                   ),
                 ),
               ],
@@ -176,12 +189,14 @@ class _GenerationStatusPanel extends StatelessWidget {
     required this.highContrast,
     required this.visualFocus,
     required this.onPlay,
+    required this.onOpenSettings,
   });
 
   final GenerationController controller;
   final bool highContrast;
   final bool visualFocus;
   final VoidCallback onPlay;
+  final VoidCallback onOpenSettings;
 
   @override
   Widget build(BuildContext context) {
@@ -283,15 +298,26 @@ class _GenerationStatusPanel extends StatelessWidget {
             ],
             if (isError) ...[
               const SizedBox(height: 18),
-              ElevatedButton.icon(
-                onPressed: controller.retry,
-                icon: const Icon(Icons.refresh),
-                label: const Text('Tentar novamente'),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: accent,
-                  foregroundColor: highContrast ? Colors.black : Colors.white,
+              if (controller.requiresStorageConfiguration)
+                ElevatedButton.icon(
+                  onPressed: onOpenSettings,
+                  icon: const Icon(Icons.settings_outlined),
+                  label: const Text('Ir para Configurações'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: accent,
+                    foregroundColor: highContrast ? Colors.black : Colors.white,
+                  ),
+                )
+              else
+                ElevatedButton.icon(
+                  onPressed: controller.retry,
+                  icon: const Icon(Icons.refresh),
+                  label: const Text('Tentar novamente'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: accent,
+                    foregroundColor: highContrast ? Colors.black : Colors.white,
+                  ),
                 ),
-              ),
             ],
           ],
         ),

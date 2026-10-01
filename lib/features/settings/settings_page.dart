@@ -1,6 +1,8 @@
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/constants/app_colors.dart';
+import '../../core/storage/storage_settings_service.dart';
 
 class SettingsPage extends StatelessWidget {
   const SettingsPage({
@@ -10,6 +12,7 @@ class SettingsPage extends StatelessWidget {
     required this.audioDescriptionMode,
     required this.narrationVolume,
     required this.speechSpeed,
+    required this.storageSettingsService,
     required this.onHighContrastChanged,
     required this.onVisualFocusChanged,
     required this.onAudioDescriptionModeChanged,
@@ -22,12 +25,41 @@ class SettingsPage extends StatelessWidget {
   final bool audioDescriptionMode;
   final double narrationVolume;
   final double speechSpeed;
+  final StorageSettingsService storageSettingsService;
 
   final ValueChanged<bool> onHighContrastChanged;
   final ValueChanged<bool> onVisualFocusChanged;
   final ValueChanged<bool> onAudioDescriptionModeChanged;
   final ValueChanged<double> onNarrationVolumeChanged;
   final ValueChanged<double> onSpeechSpeedChanged;
+
+  Future<void> _selectStorageDirectory(BuildContext context) async {
+    try {
+      final selectedPath = await FilePicker.getDirectoryPath(
+        dialogTitle: 'Escolha onde salvar as audiodescrições',
+      );
+      if (selectedPath == null) return;
+      await storageSettingsService.setDirectoryPath(selectedPath);
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Pasta de armazenamento atualizada.')),
+      );
+    } on StorageSettingsException catch (error, stackTrace) {
+      debugPrint('[See2Sound] Erro ao selecionar pasta: $error');
+      debugPrint('$stackTrace');
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(error.message)));
+    } catch (error, stackTrace) {
+      debugPrint('[See2Sound] Erro ao abrir seletor de pasta: $error');
+      debugPrint('$stackTrace');
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Não foi possível selecionar a pasta.')),
+      );
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -56,11 +88,7 @@ class SettingsPage extends StatelessWidget {
 
               Text(
                 'Ajuste a experiência visual, a narração da interface e o local de salvamento.',
-                style: TextStyle(
-                  color: secondary,
-                  fontSize: 16,
-                  height: 1.35,
-                ),
+                style: TextStyle(color: secondary, fontSize: 16, height: 1.35),
               ),
 
               const SizedBox(height: 30),
@@ -68,9 +96,14 @@ class SettingsPage extends StatelessWidget {
               _SettingsCard(
                 title: 'Armazenamento',
                 highContrast: highContrast,
-                child: _SaveLocationRow(
-                  highContrast: highContrast,
-                  visualFocus: visualFocus,
+                child: ListenableBuilder(
+                  listenable: storageSettingsService,
+                  builder: (context, _) => _SaveLocationRow(
+                    highContrast: highContrast,
+                    visualFocus: visualFocus,
+                    selectedPath: storageSettingsService.directoryPath,
+                    onBrowse: () => _selectStorageDirectory(context),
+                  ),
                 ),
               ),
 
@@ -210,10 +243,7 @@ class _SettingsCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: panel,
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(
-          color: border,
-          width: highContrast ? 2 : 1,
-        ),
+        border: Border.all(color: border, width: highContrast ? 2 : 1),
         boxShadow: [
           if (!highContrast)
             BoxShadow(
@@ -273,10 +303,14 @@ class _SaveLocationRow extends StatelessWidget {
   const _SaveLocationRow({
     required this.highContrast,
     required this.visualFocus,
+    required this.selectedPath,
+    required this.onBrowse,
   });
 
   final bool highContrast;
   final bool visualFocus;
+  final String? selectedPath;
+  final VoidCallback onBrowse;
 
   @override
   Widget build(BuildContext context) {
@@ -293,18 +327,12 @@ class _SaveLocationRow extends StatelessWidget {
             decoration: BoxDecoration(
               color: AppColors.backgroundFor(highContrast),
               borderRadius: BorderRadius.circular(10),
-              border: Border.all(
-                color: border,
-                width: highContrast ? 2 : 1,
-              ),
+              border: Border.all(color: border, width: highContrast ? 2 : 1),
             ),
             child: Text(
-              'Nenhuma pasta selecionada',
+              selectedPath ?? 'Nenhuma pasta selecionada',
               overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                color: secondary,
-                fontSize: 14,
-              ),
+              style: TextStyle(color: secondary, fontSize: 14),
             ),
           ),
         ),
@@ -318,9 +346,7 @@ class _SaveLocationRow extends StatelessWidget {
             icon: Icons.folder_open,
             highContrast: highContrast,
             visualFocus: visualFocus,
-            onPressed: () {
-              // Depois: abrir seletor de pasta.
-            },
+            onPressed: onBrowse,
           ),
         ),
       ],
@@ -420,19 +446,19 @@ class _SliderSettingRow extends StatelessWidget {
                   order: NumericFocusOrder(order),
                   child: SliderTheme(
                     data: SliderTheme.of(context).copyWith(
-                      activeTrackColor:
-                          highContrast ? accent : AppColors.gradientMiddle,
-                      inactiveTrackColor:
-                          secondary.withValues(alpha: highContrast ? 0.4 : 0.18),
-                      thumbColor:
-                          highContrast ? accent : AppColors.gradientStart,
+                      activeTrackColor: highContrast
+                          ? accent
+                          : AppColors.gradientMiddle,
+                      inactiveTrackColor: secondary.withValues(
+                        alpha: highContrast ? 0.4 : 0.18,
+                      ),
+                      thumbColor: highContrast
+                          ? accent
+                          : AppColors.gradientStart,
                       overlayColor: accent.withValues(alpha: 0.16),
                       trackHeight: 6,
                     ),
-                    child: Slider(
-                      value: value,
-                      onChanged: onChanged,
-                    ),
+                    child: Slider(value: value, onChanged: onChanged),
                   ),
                 ),
               ),
@@ -487,11 +513,7 @@ class _SettingTextBlock extends StatelessWidget {
         const SizedBox(height: 4),
         Text(
           description,
-          style: TextStyle(
-            color: secondary,
-            fontSize: 13,
-            height: 1.3,
-          ),
+          style: TextStyle(color: secondary, fontSize: 13, height: 1.3),
         ),
       ],
     );
@@ -554,23 +576,24 @@ class _GradientSwitchState extends State<_GradientSwitch> {
               gradient: widget.highContrast
                   ? null
                   : widget.value
-                      ? AppColors.mainGradient
-                      : null,
+                  ? AppColors.mainGradient
+                  : null,
               borderRadius: BorderRadius.circular(999),
               border: Border.all(
                 color: widget.visualFocus && focused
                     ? accent
                     : widget.value
-                        ? accent
-                        : border,
+                    ? accent
+                    : border,
                 width: widget.visualFocus && focused ? 3 : 1,
               ),
             ),
             child: AnimatedAlign(
               duration: const Duration(milliseconds: 160),
               curve: Curves.easeOut,
-              alignment:
-                  widget.value ? Alignment.centerRight : Alignment.centerLeft,
+              alignment: widget.value
+                  ? Alignment.centerRight
+                  : Alignment.centerLeft,
               child: Container(
                 width: 22,
                 height: 22,
@@ -615,19 +638,13 @@ class _GradientButton extends StatelessWidget {
         onTap: onPressed,
         borderRadius: BorderRadius.circular(10),
         child: Ink(
-          padding: const EdgeInsets.symmetric(
-            horizontal: 18,
-            vertical: 15,
-          ),
+          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 15),
           decoration: BoxDecoration(
             color: highContrast ? accent : null,
             gradient: highContrast ? null : AppColors.mainGradient,
             borderRadius: BorderRadius.circular(10),
             border: visualFocus
-                ? Border.all(
-                    color: accent,
-                    width: highContrast ? 2 : 1,
-                  )
+                ? Border.all(color: accent, width: highContrast ? 2 : 1)
                 : null,
           ),
           child: Row(
@@ -656,9 +673,7 @@ class _GradientButton extends StatelessWidget {
 }
 
 class _SoftDivider extends StatelessWidget {
-  const _SoftDivider({
-    required this.highContrast,
-  });
+  const _SoftDivider({required this.highContrast});
 
   final bool highContrast;
 
@@ -666,9 +681,9 @@ class _SoftDivider extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       height: highContrast ? 2 : 1,
-      color: AppColors.borderFor(highContrast).withValues(
-        alpha: highContrast ? 1 : 0.6,
-      ),
+      color: AppColors.borderFor(
+        highContrast,
+      ).withValues(alpha: highContrast ? 1 : 0.6),
     );
   }
 }
