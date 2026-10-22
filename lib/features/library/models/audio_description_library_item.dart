@@ -48,13 +48,15 @@ class AudioDescriptionLibraryItem {
   final String? jobId;
 
   AudioDescriptionLibraryItem copyWith({
+    String? originalFilename,
+    String? originalVideoPath,
     String? audioDescriptionPath,
     Duration? duration,
   }) {
     return AudioDescriptionLibraryItem(
       id: id,
-      originalFilename: originalFilename,
-      originalVideoPath: originalVideoPath,
+      originalFilename: originalFilename ?? this.originalFilename,
+      originalVideoPath: originalVideoPath ?? this.originalVideoPath,
       audioDescriptionPath: audioDescriptionPath ?? this.audioDescriptionPath,
       createdAt: createdAt,
       duration: duration ?? this.duration,

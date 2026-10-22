@@ -4,22 +4,28 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/accessibility/interface_narration_service.dart';
+import '../../core/config/api_settings_service.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/settings/app_settings_controller.dart';
 import '../../core/storage/storage_settings_service.dart';
 import '../../core/theme/app_design_tokens.dart';
 import '../../shared/widgets/app_components.dart';
 import '../../shared/widgets/section_title.dart';
+import '../generate/services/see2sound_api_service.dart';
 
 class SettingsPage extends StatelessWidget {
   const SettingsPage({
     super.key,
     required this.settings,
     required this.storageSettingsService,
+    required this.apiSettingsService,
+    required this.narrationService,
   });
 
   final AppSettingsController settings;
   final StorageSettingsService storageSettingsService;
+  final ApiSettingsService apiSettingsService;
+  final InterfaceNarrationService narrationService;
 
   Future<void> _selectStorageDirectory(BuildContext context) async {
     try {
@@ -30,9 +36,10 @@ class SettingsPage extends StatelessWidget {
       await storageSettingsService.setDirectoryPath(selectedPath);
       if (!context.mounted) return;
       _showMessage(context, 'Pasta de armazenamento atualizada.');
-      await InterfaceNarrationService(
-        settings,
-      ).announce(context, 'Pasta de armazenamento atualizada.');
+      await narrationService.announce(
+        context,
+        'Pasta de armazenamento atualizada.',
+      );
     } on StorageSettingsException catch (error, stackTrace) {
       debugPrint('[See2Sound] Erro ao selecionar pasta: $error');
       debugPrint('$stackTrace');
@@ -126,6 +133,15 @@ class SettingsPage extends StatelessWidget {
                             ? () => _openStorageDirectory(context)
                             : null,
                       ),
+                    ),
+                  ),
+                  _SettingsSection(
+                    title: 'Servidor',
+                    icon: Icons.dns_outlined,
+                    settings: settings,
+                    child: _ServerSettings(
+                      apiSettingsService: apiSettingsService,
+                      highContrast: highContrast,
                     ),
                   ),
                   _SettingsSection(
@@ -247,6 +263,150 @@ class SettingsPage extends StatelessWidget {
           ),
         );
       },
+    );
+  }
+}
+
+class _ServerSettings extends StatefulWidget {
+  const _ServerSettings({
+    required this.apiSettingsService,
+    required this.highContrast,
+  });
+
+  final ApiSettingsService apiSettingsService;
+  final bool highContrast;
+
+  @override
+  State<_ServerSettings> createState() => _ServerSettingsState();
+}
+
+class _ServerSettingsState extends State<_ServerSettings> {
+  late final TextEditingController _controller;
+  bool _testing = false;
+  String? _message;
+  bool _success = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = TextEditingController(
+      text: widget.apiSettingsService.baseUrl,
+    );
+    widget.apiSettingsService.addListener(_syncAddress);
+  }
+
+  @override
+  void didUpdateWidget(covariant _ServerSettings oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.apiSettingsService != widget.apiSettingsService) {
+      oldWidget.apiSettingsService.removeListener(_syncAddress);
+      widget.apiSettingsService.addListener(_syncAddress);
+      _syncAddress();
+    }
+  }
+
+  void _syncAddress() {
+    if (_controller.text != widget.apiSettingsService.baseUrl) {
+      _controller.text = widget.apiSettingsService.baseUrl;
+    }
+  }
+
+  @override
+  void dispose() {
+    widget.apiSettingsService.removeListener(_syncAddress);
+    _controller.dispose();
+    super.dispose();
+  }
+
+  Future<void> _saveAndTest() async {
+    if (_testing) return;
+    setState(() {
+      _testing = true;
+      _message = null;
+    });
+    See2SoundApiService? service;
+    try {
+      await widget.apiSettingsService.setBaseUrl(_controller.text);
+      service = See2SoundApiService(
+        uriBuilder: widget.apiSettingsService.uri,
+        requestTimeout: const Duration(seconds: 8),
+      );
+      final available = await service.healthCheck();
+      if (!available) {
+        throw const ApiSettingsException(
+          'O servidor respondeu, mas não foi reconhecido como See2Sound API.',
+        );
+      }
+      if (!mounted) return;
+      setState(() {
+        _success = true;
+        _message = 'Conexão estabelecida com o servidor See2Sound.';
+      });
+    } on ApiSettingsException catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _success = false;
+        _message = error.message;
+      });
+    } catch (error, stackTrace) {
+      debugPrint('[See2Sound] Falha no teste da API: $error');
+      debugPrint('$stackTrace');
+      if (!mounted) return;
+      setState(() {
+        _success = false;
+        _message =
+            'Não foi possível conectar ao servidor. Verifique o endereço e se a API está em execução.';
+      });
+    } finally {
+      service?.close();
+      if (mounted) setState(() => _testing = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        TextField(
+          controller: _controller,
+          enabled: !_testing,
+          keyboardType: TextInputType.url,
+          autocorrect: false,
+          decoration: const InputDecoration(
+            labelText: 'Endereço da API',
+            hintText: 'http://127.0.0.1:8000',
+            prefixIcon: Icon(Icons.link),
+          ),
+          onSubmitted: (_) => _saveAndTest(),
+        ),
+        const SizedBox(height: AppSpacing.sm),
+        Text(
+          'Use 10.0.2.2 no Android Emulator ou o IP local do computador em dispositivos físicos.',
+          style: Theme.of(context).textTheme.bodySmall,
+        ),
+        const SizedBox(height: AppSpacing.md),
+        FilledButton.icon(
+          onPressed: _testing ? null : _saveAndTest,
+          icon: _testing
+              ? const SizedBox.square(
+                  dimension: 18,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : const Icon(Icons.wifi_tethering),
+          label: Text(_testing ? 'Testando...' : 'Salvar e testar conexão'),
+        ),
+        if (_message != null) ...[
+          const SizedBox(height: AppSpacing.md),
+          AppStatusMessage(
+            type: _success ? AppMessageType.success : AppMessageType.error,
+            title: _success ? 'Servidor disponível' : 'Falha de conexão',
+            message: _message,
+            highContrast: widget.highContrast,
+            liveRegion: true,
+          ),
+        ],
+      ],
     );
   }
 }

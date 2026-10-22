@@ -105,4 +105,30 @@ void main() {
       await directory.delete(recursive: true);
     }
   });
+
+  test('atualiza caminhos quando arquivos foram movidos', () async {
+    final service = LibraryService();
+    await service.initialize();
+    final item = AudioDescriptionLibraryItem(
+      id: 'job-movido',
+      originalFilename: 'video.mp4',
+      originalVideoPath: '/antigo/video.mp4',
+      audioDescriptionPath: '/antigo/audio.wav',
+      createdAt: DateTime(2026, 10, 8),
+      jobId: 'job-movido',
+    );
+    await service.addItem(item);
+
+    final updated = await service.updateItemPaths(
+      item,
+      originalVideoPath: '/novo/video.mp4',
+      audioDescriptionPath: '/novo/audio.wav',
+    );
+
+    expect(updated.originalVideoPath, '/novo/video.mp4');
+    expect(updated.audioDescriptionPath, '/novo/audio.wav');
+    final restored = LibraryService();
+    await restored.initialize();
+    expect(restored.items.single.originalVideoPath, '/novo/video.mp4');
+  });
 }

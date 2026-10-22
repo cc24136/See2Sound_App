@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -8,17 +9,22 @@ import '../../../core/config/api_config.dart';
 import '../../../core/network/api_exception.dart';
 import '../models/audio_description_metadata.dart';
 import '../models/generation_created.dart';
+import '../models/generation_result.dart';
 import '../models/generation_status.dart';
 
 class See2SoundApiService {
   See2SoundApiService({
     http.Client? client,
     Uri Function(String path)? uriBuilder,
+    this.requestTimeout = const Duration(seconds: 30),
+    this.uploadTimeout = const Duration(minutes: 5),
   }) : _client = client ?? http.Client(),
        _uriBuilder = uriBuilder ?? ApiConfig.uri;
 
   final http.Client _client;
   final Uri Function(String path) _uriBuilder;
+  final Duration requestTimeout;
+  final Duration uploadTimeout;
 
   Future<bool> healthCheck() async {
     final response = await _get('/health');
@@ -53,8 +59,10 @@ class See2SoundApiService {
           );
 
     try {
-      final streamed = await _client.send(request);
-      final response = await http.Response.fromStream(streamed);
+      final streamed = await _client.send(request).timeout(uploadTimeout);
+      final response = await http.Response.fromStream(
+        streamed,
+      ).timeout(uploadTimeout);
       _ensureSuccess(response, expectedStatuses: const {202});
       return GenerationCreated.fromJson(_decodeObject(response));
     } on ApiException {
@@ -72,9 +80,17 @@ class See2SoundApiService {
     return GenerationSnapshot.fromJson(_decodeObject(response));
   }
 
-  Future<Map<String, dynamic>> getGenerationResult(String jobId) async {
+  Future<GenerationResult> getGenerationResult(String jobId) async {
     final response = await _get('/api/v1/generations/$jobId/result');
-    return _decodeObject(response);
+    return GenerationResult.fromJson(_decodeObject(response));
+  }
+
+  Future<List<int>> downloadArtifact(String jobId, String artifactName) async {
+    final encodedName = Uri.encodeComponent(artifactName);
+    final response = await _get(
+      '/api/v1/generations/$jobId/artifacts/$encodedName',
+    );
+    return response.bodyBytes;
   }
 
   Future<AudioDescriptionMetadata> getAudioDescriptionMetadata(
@@ -95,6 +111,19 @@ class See2SoundApiService {
     final bytes = response.bodyBytes;
 
     try {
+      final contentType = response.headers['content-type']?.toLowerCase();
+      if (bytes.isEmpty) {
+        throw const FormatException('O servidor retornou um áudio vazio.');
+      }
+      if (contentType != null && !contentType.startsWith('audio/')) {
+        throw FormatException('Content-Type inesperado: $contentType');
+      }
+      if (!_hasWavHeader(bytes)) {
+        throw const FormatException(
+          'O arquivo recebido não possui cabeçalho WAV.',
+        );
+      }
+
       final destinationDirectory = Directory(destinationDirectoryPath);
       if (!await destinationDirectory.exists()) {
         throw const ApiException(
@@ -104,12 +133,26 @@ class See2SoundApiService {
 
       final safeStem = _safeFileStem(originalFilename);
       final file = await _availableAudioFile(destinationDirectory, safeStem);
+      final partialFile = File('${file.path}.part');
 
       debugPrint('See2Sound storage directory: ${destinationDirectory.path}');
       debugPrint('See2Sound audio file: ${file.path}');
       debugPrint('See2Sound audio bytes received: ${bytes.length}');
 
-      await file.writeAsBytes(bytes, flush: true);
+      try {
+        await partialFile.writeAsBytes(bytes, flush: true);
+        if (await file.exists()) {
+          throw FileSystemException(
+            'O arquivo de destino passou a existir durante o download.',
+            file.path,
+          );
+        }
+        await partialFile.rename(file.path);
+      } finally {
+        if (await partialFile.exists()) {
+          await partialFile.delete();
+        }
+      }
 
       final fileExists = await file.exists();
       final fileSize = fileExists ? await file.length() : 0;
@@ -139,6 +182,18 @@ class See2SoundApiService {
     }
   }
 
+  bool _hasWavHeader(List<int> bytes) {
+    if (bytes.length < 12) return false;
+    return bytes[0] == 0x52 &&
+        bytes[1] == 0x49 &&
+        bytes[2] == 0x46 &&
+        bytes[3] == 0x46 &&
+        bytes[8] == 0x57 &&
+        bytes[9] == 0x41 &&
+        bytes[10] == 0x56 &&
+        bytes[11] == 0x45;
+  }
+
   String _safeFileStem(String originalFilename) {
     final fileName = originalFilename.split(RegExp(r'[/\\]')).last;
     final extensionIndex = fileName.lastIndexOf('.');
@@ -166,7 +221,9 @@ class See2SoundApiService {
 
   Future<http.Response> _get(String path) async {
     try {
-      final response = await _client.get(_uriBuilder(path));
+      final response = await _client
+          .get(_uriBuilder(path))
+          .timeout(requestTimeout);
       _ensureSuccess(response);
       return response;
     } on ApiException {

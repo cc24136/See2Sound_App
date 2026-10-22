@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:see2sound_app/features/generate/models/audio_description_metadata.dart';
 import 'package:see2sound_app/features/generate/models/generation_created.dart';
+import 'package:see2sound_app/features/generate/models/generation_result.dart';
 import 'package:see2sound_app/features/generate/models/generation_status.dart';
 
 void main() {
@@ -76,5 +77,47 @@ void main() {
     expect(metadata.cues, hasLength(1));
     expect(metadata.cues.single.text, 'Uma pessoa observa o mar.');
     expect(metadata.cues.single.inserted, isTrue);
+  });
+
+  test('aceita menos descrições narrativas do que cenas analisadas', () {
+    final result = GenerationResult.fromJson({
+      'job_id': 'job-1',
+      'status': 'completed',
+      'result': {
+        'scenes': {
+          'scenes': List.generate(7, (index) => {'index': index}),
+        },
+        'narrative': {
+          'timeline': [
+            {'description': 'Primeira descrição.', 'skipped': false},
+            {'description': 'Descrição de mudança.', 'skipped': false},
+          ],
+        },
+        'voice_engine': {'modified_audio_path': '/tmp/audio.wav'},
+      },
+      'artifact_urls': {
+        'audio_description':
+            '/api/v1/generations/job-1/artifacts/audio_description',
+      },
+    });
+
+    expect(result.narrativeDescriptionCount, 2);
+    expect(result.hasAudioDescription, isTrue);
+  });
+
+  test('resultado sem timeline narrativa é válido', () {
+    final result = GenerationResult.fromJson(const {
+      'job_id': 'job-2',
+      'status': 'completed',
+      'result': {
+        'narrative': {'timeline': []},
+        'voice_engine': null,
+      },
+      'artifact_urls': {},
+    });
+
+    expect(result.narrativeTimeline, isEmpty);
+    expect(result.hasVoiceEngine, isFalse);
+    expect(result.hasAudioDescription, isFalse);
   });
 }

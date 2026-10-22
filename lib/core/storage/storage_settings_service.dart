@@ -58,6 +58,7 @@ class StorageSettingsService extends ChangeNotifier {
           'A pasta selecionada não foi encontrada.',
         );
       }
+      await _verifyWritable(directory);
 
       final preferences = _preferences ?? await SharedPreferences.getInstance();
       final saved = await preferences.setString(
@@ -81,6 +82,52 @@ class StorageSettingsService extends ChangeNotifier {
       debugPrint('$stackTrace');
       throw StorageSettingsException(
         'Não foi possível salvar a pasta selecionada.',
+        error,
+      );
+    }
+  }
+
+  Future<Directory> requireWritableDirectory() async {
+    await initialize();
+    final path = _directoryPath;
+    if (path == null || path.isEmpty) {
+      throw const StorageSettingsException(
+        'Escolha uma pasta para salvar suas audiodescrições antes de continuar.',
+      );
+    }
+    final directory = Directory(path);
+    if (!await directory.exists()) {
+      throw const StorageSettingsException(
+        'A pasta configurada não foi encontrada. Escolha outra pasta nas configurações.',
+      );
+    }
+    await _verifyWritable(directory);
+    return directory;
+  }
+
+  Future<void> _verifyWritable(Directory directory) async {
+    final separator = Platform.pathSeparator;
+    final probe = File(
+      '${directory.path}$separator.see2sound-write-${DateTime.now().microsecondsSinceEpoch}.tmp',
+    );
+    try {
+      await probe.writeAsBytes(const [0], flush: true);
+      await probe.delete();
+    } catch (error, stackTrace) {
+      debugPrint('[See2Sound] Pasta sem permissão de escrita: $error');
+      debugPrint('$stackTrace');
+      if (await probe.exists()) {
+        try {
+          await probe.delete();
+        } catch (cleanupError, cleanupStackTrace) {
+          debugPrint(
+            '[See2Sound] Falha ao remover arquivo de teste: $cleanupError',
+          );
+          debugPrint('$cleanupStackTrace');
+        }
+      }
+      throw StorageSettingsException(
+        'A pasta selecionada não permite salvar arquivos. Verifique a permissão ou escolha outra pasta.',
         error,
       );
     }

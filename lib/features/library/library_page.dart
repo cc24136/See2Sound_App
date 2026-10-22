@@ -91,30 +91,98 @@ class _LibraryPageState extends State<LibraryPage> {
   }
 
   Future<void> _play(AudioDescriptionLibraryItem item) async {
-    final videoExists = await File(item.originalVideoPath).exists();
-    if (!videoExists) {
-      _showMessage('O vídeo original não foi encontrado.');
-      return;
+    var playableItem = item;
+    if (!await File(playableItem.originalVideoPath).exists()) {
+      final recovered = await _recoverMissingFile(playableItem, video: true);
+      if (recovered == null) return;
+      playableItem = recovered;
     }
-    final audioExists = await File(item.audioDescriptionPath).exists();
-    if (!audioExists) {
-      _showMessage('O arquivo de audiodescrição não foi encontrado.');
-      return;
+    if (!await File(playableItem.audioDescriptionPath).exists()) {
+      final recovered = await _recoverMissingFile(playableItem, video: false);
+      if (recovered == null) return;
+      playableItem = recovered;
     }
     if (!mounted) return;
 
     await Navigator.of(context).push<void>(
       MaterialPageRoute(
         builder: (_) => PlayerPage(
-          videoPath: item.originalVideoPath,
-          audioPath: item.audioDescriptionPath,
-          filename: item.originalFilename,
+          videoPath: playableItem.originalVideoPath,
+          audioPath: playableItem.audioDescriptionPath,
+          filename: playableItem.originalFilename,
           highContrast: widget.highContrast,
           visualFocus: widget.visualFocus,
           backTooltip: 'Voltar para Suas audiodescrições',
         ),
       ),
     );
+  }
+
+  Future<AudioDescriptionLibraryItem?> _recoverMissingFile(
+    AudioDescriptionLibraryItem item, {
+    required bool video,
+  }) async {
+    final locate =
+        await showDialog<bool>(
+          context: context,
+          builder: (dialogContext) => AlertDialog(
+            icon: Icon(
+              video ? Icons.movie_outlined : Icons.audio_file_outlined,
+            ),
+            title: Text(
+              video
+                  ? 'O vídeo original não foi encontrado'
+                  : 'A audiodescrição não foi encontrada',
+            ),
+            content: Text(
+              video
+                  ? 'O vídeo pode ter sido movido ou renomeado. Deseja localizá-lo novamente?'
+                  : 'O arquivo WAV pode ter sido movido ou renomeado. Deseja localizá-lo novamente?',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(dialogContext).pop(false),
+                child: const Text('Agora não'),
+              ),
+              FilledButton.icon(
+                onPressed: () => Navigator.of(dialogContext).pop(true),
+                icon: const Icon(Icons.search),
+                label: const Text('Localizar arquivo'),
+              ),
+            ],
+          ),
+        ) ??
+        false;
+    if (!locate || !mounted) return null;
+
+    try {
+      final selected = await FilePicker.pickFile(
+        dialogTitle: video
+            ? 'Localize o vídeo original'
+            : 'Localize a audiodescrição WAV',
+        type: FileType.custom,
+        allowedExtensions: video
+            ? const ['mp4', 'mov', 'avi', 'mkv', 'webm', 'm4v']
+            : const ['wav'],
+      );
+      final path = selected?.path;
+      if (path == null || path.isEmpty) return null;
+      final updated = await widget.libraryService.updateItemPaths(
+        item,
+        originalVideoPath: video ? path : null,
+        audioDescriptionPath: video ? null : path,
+      );
+      _showMessage('Localização atualizada na biblioteca.');
+      return updated;
+    } on LibraryException catch (error) {
+      _showMessage(error.message);
+      return null;
+    } catch (error, stackTrace) {
+      debugPrint('[See2Sound] Erro ao recuperar arquivo movido: $error');
+      debugPrint('$stackTrace');
+      _showMessage('Não foi possível atualizar a localização do arquivo.');
+      return null;
+    }
   }
 
   Future<void> _handleMenuAction(

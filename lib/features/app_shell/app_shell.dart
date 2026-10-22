@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/constants/app_colors.dart';
 import '../../core/accessibility/interface_narration_service.dart';
+import '../../core/config/api_settings_service.dart';
 import '../../core/settings/app_settings_controller.dart';
 import '../../core/storage/storage_settings_service.dart';
 import '../../core/theme/app_design_tokens.dart';
@@ -28,6 +29,7 @@ class _AppShellState extends State<AppShell> {
   late final LibraryService libraryService;
   late final AppSettingsController appSettings;
   late final InterfaceNarrationService narrationService;
+  late final ApiSettingsService apiSettingsService;
 
   AppPage currentPage = AppPage.generate;
 
@@ -38,6 +40,7 @@ class _AppShellState extends State<AppShell> {
     libraryService = LibraryService();
     appSettings = AppSettingsController()..addListener(_refresh);
     narrationService = InterfaceNarrationService(appSettings);
+    apiSettingsService = ApiSettingsService();
     unawaited(_initializeServices());
   }
 
@@ -47,6 +50,7 @@ class _AppShellState extends State<AppShell> {
         storageSettingsService.initialize(),
         libraryService.initialize(),
         appSettings.initialize(),
+        apiSettingsService.initialize(),
       ]);
     } catch (error, stackTrace) {
       debugPrint('[See2Sound] Erro ao inicializar serviços locais: $error');
@@ -62,6 +66,7 @@ class _AppShellState extends State<AppShell> {
       ..dispose();
     storageSettingsService.dispose();
     libraryService.dispose();
+    apiSettingsService.dispose();
     super.dispose();
   }
 
@@ -85,6 +90,7 @@ class _AppShellState extends State<AppShell> {
           reduceMotion: appSettings.reduceMotion,
           simplifiedInterface: appSettings.simplifiedInterface,
           narrationService: narrationService,
+          apiSettingsService: apiSettingsService,
           onOpenSettings: () {
             setState(() {
               currentPage = AppPage.settings;
@@ -116,6 +122,8 @@ class _AppShellState extends State<AppShell> {
         page = SettingsPage(
           settings: appSettings,
           storageSettingsService: storageSettingsService,
+          apiSettingsService: apiSettingsService,
+          narrationService: narrationService,
         );
         break;
     }

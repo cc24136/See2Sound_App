@@ -7,6 +7,7 @@ import 'package:video_player/video_player.dart';
 
 import '../../core/constants/app_colors.dart';
 import '../../core/accessibility/interface_narration_service.dart';
+import '../../core/config/api_settings_service.dart';
 import '../../core/storage/storage_settings_service.dart';
 import '../../core/theme/app_design_tokens.dart';
 import '../../shared/widgets/app_components.dart';
@@ -15,6 +16,7 @@ import '../../shared/widgets/upload_panel.dart';
 import '../library/services/library_service.dart';
 import '../player/player_page.dart';
 import 'controllers/generation_controller.dart';
+import 'services/see2sound_api_service.dart';
 
 class GeneratePage extends StatefulWidget {
   const GeneratePage({
@@ -26,6 +28,7 @@ class GeneratePage extends StatefulWidget {
     required this.reduceMotion,
     required this.simplifiedInterface,
     required this.narrationService,
+    required this.apiSettingsService,
     required this.onOpenSettings,
     required this.onOpenLibrary,
   });
@@ -37,6 +40,7 @@ class GeneratePage extends StatefulWidget {
   final bool reduceMotion;
   final bool simplifiedInterface;
   final InterfaceNarrationService narrationService;
+  final ApiSettingsService apiSettingsService;
   final VoidCallback onOpenSettings;
   final VoidCallback onOpenLibrary;
 
@@ -53,6 +57,9 @@ class _GeneratePageState extends State<GeneratePage> {
   void initState() {
     super.initState();
     _controller = GenerationController(
+      apiService: See2SoundApiService(
+        uriBuilder: widget.apiSettingsService.uri,
+      ),
       storageSettingsService: widget.storageSettingsService,
       libraryService: widget.libraryService,
     )..addListener(_refresh);
@@ -278,6 +285,12 @@ class _GenerationStatusPanel extends StatelessWidget {
     final accent = AppColors.accentFor(highContrast);
     final isError = controller.state == GenerationUiState.error;
     final isReady = controller.state == GenerationUiState.ready;
+    final completedWithoutDescriptions =
+        controller.state == GenerationUiState.completedWithoutDescriptions;
+    final completedWithoutAudio =
+        controller.state == GenerationUiState.completedWithoutAudio;
+    final isCompletedNotice =
+        completedWithoutDescriptions || completedWithoutAudio;
 
     return Semantics(
       liveRegion: true,
@@ -301,11 +314,17 @@ class _GenerationStatusPanel extends StatelessWidget {
                   )
                 else
                   Icon(
-                    isReady ? Icons.check_circle_outline : Icons.error_outline,
+                    isReady
+                        ? Icons.check_circle_outline
+                        : isCompletedNotice
+                        ? Icons.info_outline
+                        : Icons.error_outline,
                     color: isError
                         ? AppColors.errorFor(highContrast)
                         : isReady
                         ? AppColors.successFor(highContrast)
+                        : isCompletedNotice
+                        ? AppColors.warningFor(highContrast)
                         : accent,
                     size: 26,
                   ),
@@ -367,6 +386,32 @@ class _GenerationStatusPanel extends StatelessWidget {
                     label: const Text('Abrir biblioteca'),
                   ),
                   TextButton.icon(
+                    onPressed: onGenerateAnother,
+                    icon: const Icon(Icons.add),
+                    label: const Text('Gerar outra'),
+                  ),
+                ],
+              ),
+            ],
+            if (isCompletedNotice) ...[
+              const SizedBox(height: AppSpacing.md),
+              Text(
+                completedWithoutDescriptions
+                    ? 'O Narrative Engine concluiu a análise e determinou que não havia descrições novas suficientes. Isso não é uma falha.'
+                    : 'O resultado textual foi concluído, mas o backend não disponibilizou uma faixa WAV para reprodução.',
+                style: TextStyle(color: secondary, height: 1.4),
+              ),
+              const SizedBox(height: AppSpacing.md),
+              Wrap(
+                spacing: AppSpacing.sm,
+                runSpacing: AppSpacing.sm,
+                children: [
+                  OutlinedButton.icon(
+                    onPressed: onOpenLibrary,
+                    icon: const Icon(Icons.video_library_outlined),
+                    label: const Text('Abrir biblioteca'),
+                  ),
+                  FilledButton.icon(
                     onPressed: onGenerateAnother,
                     icon: const Icon(Icons.add),
                     label: const Text('Gerar outra'),
@@ -451,6 +496,8 @@ class _GenerationSteps extends StatelessWidget {
     GenerationUiState.processing => 3,
     GenerationUiState.downloadingAudio => 4,
     GenerationUiState.ready => 5,
+    GenerationUiState.completedWithoutDescriptions ||
+    GenerationUiState.completedWithoutAudio => 5,
     _ => 0,
   };
 

@@ -85,6 +85,20 @@ class LibraryService extends ChangeNotifier {
     await _persist(_items.where((item) => item.id != id).toList());
   }
 
+  Future<AudioDescriptionLibraryItem> updateItemPaths(
+    AudioDescriptionLibraryItem item, {
+    String? originalVideoPath,
+    String? audioDescriptionPath,
+  }) async {
+    await _ensureInitialized();
+    final updated = item.copyWith(
+      originalVideoPath: originalVideoPath,
+      audioDescriptionPath: audioDescriptionPath,
+    );
+    await _replaceItem(updated);
+    return updated;
+  }
+
   Future<AudioDescriptionLibraryItem> renameAudioFile(
     AudioDescriptionLibraryItem item,
     String requestedName,

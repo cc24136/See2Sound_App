@@ -48,7 +48,9 @@ class _PlayerPageState extends State<PlayerPage> {
   Future<void> _initialize() async {
     try {
       await _controller.initialize();
-    } on Object catch (error) {
+    } on Object catch (error, stackTrace) {
+      debugPrint('[See2Sound] Erro ao inicializar player: $error');
+      debugPrint('$stackTrace');
       if (mounted) {
         setState(() => _initializationError = error);
       }

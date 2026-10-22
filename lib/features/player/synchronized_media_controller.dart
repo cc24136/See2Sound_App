@@ -12,10 +12,12 @@ class SynchronizedMediaController extends ChangeNotifier {
     this.driftThreshold = const Duration(milliseconds: 250),
   }) : videoController = VideoPlayerController.file(File(videoPath)),
        audioPlayer = AudioPlayer(),
+       _videoPath = videoPath,
        _audioPath = audioPath;
 
   final VideoPlayerController videoController;
   final AudioPlayer audioPlayer;
+  final String _videoPath;
   final String _audioPath;
   final Duration driftThreshold;
 
@@ -37,9 +39,23 @@ class SynchronizedMediaController extends ChangeNotifier {
   double get playbackSpeed => _playbackSpeed;
 
   Future<void> initialize() async {
+    if (!await File(_videoPath).exists()) {
+      throw FileSystemException(
+        'O vídeo original não foi encontrado.',
+        _videoPath,
+      );
+    }
+    if (!await File(_audioPath).exists()) {
+      throw FileSystemException(
+        'O arquivo de audiodescrição não foi encontrado.',
+        _audioPath,
+      );
+    }
     await videoController.initialize();
+    if (_disposed) return;
     await videoController.setVolume(0);
     await audioPlayer.setFilePath(_audioPath);
+    if (_disposed) return;
     await audioPlayer.setVolume(_volume);
 
     if (_disposed) return;
@@ -90,6 +106,7 @@ class SynchronizedMediaController extends ChangeNotifier {
   Future<void> restart() => seekTo(Duration.zero);
 
   Future<void> setVolume(double value) async {
+    if (!_initialized || _disposed) return;
     _volume = value.clamp(0, 1);
     await audioPlayer.setVolume(_volume);
     if (!_disposed) notifyListeners();
@@ -144,16 +161,32 @@ class SynchronizedMediaController extends ChangeNotifier {
       return;
     }
 
-    final difference = (videoController.value.position - audioPlayer.position)
-        .abs();
-    if (difference <= driftThreshold) return;
+    if (!requiresDriftCorrection(
+      videoPosition: videoController.value.position,
+      audioPosition: audioPlayer.position,
+      threshold: driftThreshold,
+    )) {
+      return;
+    }
 
     _correctingDrift = true;
     try {
       await audioPlayer.seek(videoController.value.position);
+    } catch (error, stackTrace) {
+      debugPrint('[See2Sound] Falha ao corrigir sincronização: $error');
+      debugPrint('$stackTrace');
     } finally {
       _correctingDrift = false;
     }
+  }
+
+  @visibleForTesting
+  static bool requiresDriftCorrection({
+    required Duration videoPosition,
+    required Duration audioPosition,
+    required Duration threshold,
+  }) {
+    return (videoPosition - audioPosition).abs() > threshold;
   }
 
   @override
