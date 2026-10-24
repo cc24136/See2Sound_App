@@ -49,6 +49,8 @@ class _UploadPanelState extends State<UploadPanel> {
 
     return Semantics(
       button: true,
+      excludeSemantics: true,
+      onTap: widget.enabled ? widget.onTap : null,
       enabled: widget.enabled,
       label: widget.title,
       hint: widget.enabled
@@ -80,6 +82,7 @@ class _UploadPanelState extends State<UploadPanel> {
             ),
           },
           child: InkWell(
+            canRequestFocus: false,
             onTap: widget.enabled ? widget.onTap : null,
             borderRadius: BorderRadius.circular(18),
             child: AnimatedContainer(

@@ -542,22 +542,15 @@ class _SwitchRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Semantics(
-      toggled: value,
-      label: title,
-      hint: description,
-      child: ExcludeSemantics(
-        child: SwitchListTile.adaptive(
-          contentPadding: EdgeInsets.zero,
-          title: Text(title, style: AppTypography.label),
-          subtitle: Padding(
-            padding: const EdgeInsets.only(top: AppSpacing.xxs),
-            child: Text(description, style: AppTypography.body),
-          ),
-          value: value,
-          onChanged: onChanged,
-        ),
+    return SwitchListTile.adaptive(
+      contentPadding: EdgeInsets.zero,
+      title: Text(title, style: AppTypography.label),
+      subtitle: Padding(
+        padding: const EdgeInsets.only(top: AppSpacing.xxs),
+        child: Text(description, style: AppTypography.body),
       ),
+      value: value,
+      onChanged: onChanged,
     );
   }
 }

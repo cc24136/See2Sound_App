@@ -1,0 +1,38 @@
+{
+  "original_plugin": "just_audio_windows 0.2.3",
+  "baseline_native_result": "setFilePath timed out after 12 seconds with a valid real WAV",
+  "replacement": "just_audio_windows_plus 0.5.5, vendored with UTF-8 file-URI patch",
+  "upstream_plus_unicode_result": "failed with path not found; ASCII path passed",
+  "root_cause": "WinRT file URI parsing corrupted escaped UTF-8; original path became reproduÃ§Ã£o instead of reprodução",
+  "patched_native_tests": 3,
+  "native_result": "passed on Windows Debug",
+  "isolated_flutter_tests": 76,
+  "opt_in_backend_tests_skipped": 3,
+  "fixture_wav_bytes": 2600180,
+  "fixture_sha256": "74c849ed21b406fc1c2064c5e19b271247d0d406df994ddfd8cd1c97bd65eed6",
+  "fixture_duration_seconds": 14.74,
+  "tested_path_characters": [
+    "spaces",
+    "accents",
+    "#",
+    "%"
+  ],
+  "video_original_volume": 0,
+  "controls_tested": [
+    "play",
+    "pause",
+    "seek",
+    "restart",
+    "end/replay",
+    "speed",
+    "volume",
+    "deliberate drift correction",
+    "dispose/reopen"
+  ],
+  "windows_release_build": "passed",
+  "backend_modified": false,
+  "api_contract_modified": false,
+  "flutter_analyze": "passed: no issues",
+  "flutter_test": "passed: 76 tests; 3 opt-in HTTP tests skipped",
+  "flutter_build_windows": "passed: Release"
+}

@@ -90,38 +90,61 @@ class _LibraryPageState extends State<LibraryPage> {
     return filtered;
   }
 
-  Future<void> _play(AudioDescriptionLibraryItem item) async {
-    var playableItem = item;
-    if (!await File(playableItem.originalVideoPath).exists()) {
-      final recovered = await _recoverMissingFile(playableItem, video: true);
-      if (recovered == null) return;
-      playableItem = recovered;
-    }
-    if (!await File(playableItem.audioDescriptionPath).exists()) {
-      final recovered = await _recoverMissingFile(playableItem, video: false);
-      if (recovered == null) return;
-      playableItem = recovered;
-    }
-    if (!mounted) return;
+  bool _openingPlayer = false;
 
-    await Navigator.of(context).push<void>(
-      MaterialPageRoute(
-        builder: (_) => PlayerPage(
-          videoPath: playableItem.originalVideoPath,
-          audioPath: playableItem.audioDescriptionPath,
-          filename: playableItem.originalFilename,
-          highContrast: widget.highContrast,
-          visualFocus: widget.visualFocus,
-          backTooltip: 'Voltar para Suas audiodescrições',
+  Future<void> _play(AudioDescriptionLibraryItem item) async {
+    if (_openingPlayer || !mounted) return;
+    _openingPlayer = true;
+    try {
+      var playableItem = item;
+      if (!await File(playableItem.originalVideoPath).exists()) {
+        final recovered = await _recoverMissingFile(playableItem, video: true);
+        if (recovered == null) return;
+        playableItem = recovered;
+      }
+      if (!await File(playableItem.audioDescriptionPath).exists()) {
+        final recovered = await _recoverMissingFile(playableItem, video: false);
+        if (recovered == null) return;
+        playableItem = recovered;
+      }
+      if (!mounted) return;
+
+      await Navigator.of(context).push<void>(
+        MaterialPageRoute(
+          builder: (_) => MediaQuery(
+            data: MediaQuery.of(context),
+            child: InheritedTheme.captureAll(
+              context,
+              PlayerPage(
+                videoPath: playableItem.originalVideoPath,
+                audioPath: playableItem.audioDescriptionPath,
+                filename: playableItem.originalFilename,
+                highContrast: widget.highContrast,
+                visualFocus: widget.visualFocus,
+                backTooltip: 'Voltar para Suas audiodescrições',
+              ),
+            ),
+          ),
         ),
-      ),
-    );
+      );
+    } catch (error, stackTrace) {
+      debugPrint('[See2Sound] Não foi possível abrir reprodução: $error');
+      debugPrint('$stackTrace');
+      if (mounted) {
+        _showMessage(
+          'Não foi possível abrir a reprodução. Verifique os arquivos e tente novamente.',
+        );
+      }
+    } finally {
+      _openingPlayer = false;
+    }
   }
 
   Future<AudioDescriptionLibraryItem?> _recoverMissingFile(
     AudioDescriptionLibraryItem item, {
     required bool video,
   }) async {
+    if (!mounted) return null;
     final locate =
         await showDialog<bool>(
           context: context,
@@ -404,6 +427,17 @@ class _LibraryPageState extends State<LibraryPage> {
                   onNewVideo: widget.onNewVideo,
                 ),
                 const SizedBox(height: 28),
+                if (widget.libraryService.loadError != null &&
+                    widget.libraryService.items.isNotEmpty) ...[
+                  AppStatusMessage(
+                    type: AppMessageType.warning,
+                    title: 'Histórico recuperado parcialmente',
+                    message: widget.libraryService.loadError,
+                    highContrast: widget.highContrast,
+                    liveRegion: true,
+                  ),
+                  const SizedBox(height: AppSpacing.md),
+                ],
                 _LibraryToolbar(
                   controller: _searchController,
                   sort: _sort,
@@ -596,6 +630,7 @@ class _LibraryToolbar extends StatelessWidget {
           ),
         );
         final order = DropdownButtonFormField<_LibrarySort>(
+          isExpanded: true,
           initialValue: sort,
           decoration: const InputDecoration(
             labelText: 'Ordenar por',
@@ -651,7 +686,6 @@ class _LoadingState extends StatelessWidget {
   Widget build(BuildContext context) {
     return Semantics(
       liveRegion: true,
-      label: 'Carregando audiodescrições salvas',
       child: Padding(
         padding: const EdgeInsets.symmetric(vertical: 48),
         child: Column(
@@ -689,7 +723,6 @@ class _EmptyLibraryState extends StatelessWidget {
     final accent = AppColors.accentFor(highContrast);
     return Semantics(
       liveRegion: true,
-      label: errorMessage ?? 'Nenhuma audiodescrição salva',
       child: Padding(
         padding: const EdgeInsets.symmetric(vertical: 44, horizontal: 20),
         child: Column(

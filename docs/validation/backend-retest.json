@@ -1,0 +1,23 @@
+{
+  "api": "http://127.0.0.1:8000",
+  "sample": "video_teste.mp4",
+  "job_id": "d152c9abffcb45609998de1b6fe825c7",
+  "states": [
+    "uploading",
+    "queued",
+    "processing",
+    "error"
+  ],
+  "final_state": "error",
+  "backend_status": "failed",
+  "elapsed_seconds": 10,
+  "passed": false,
+  "failure_handled_without_stuck_loading": true,
+  "failure_cause": "Missing narrative model: data/models/qwen/qwen2.5-3b-instruct-q4_k_m.gguf",
+  "backend_configuration_variable": "SEE2SOUND_NARRATIVE_MODEL",
+  "live_health_and_missing_job_test": "passed",
+  "live_failed_job_endpoints_test": "passed",
+  "static_analysis": "passed",
+  "full_unit_suite_retest": "interrupted: insufficient disk space (Windows errno 112)",
+  "windows_build": "blocked: symlink support required"
+}

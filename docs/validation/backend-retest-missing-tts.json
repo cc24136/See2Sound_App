@@ -1,0 +1,17 @@
+{
+  "api": "http://127.0.0.1:8000",
+  "sample": "video_teste.mp4",
+  "passed": false,
+  "job_id": "d88bddfb16814a3ebd86aedaf90b2b75",
+  "states": [
+    "uploading",
+    "queued",
+    "processing",
+    "error"
+  ],
+  "final_state": "error",
+  "backend_status": "failed",
+  "failure_handled_without_stuck_loading": true,
+  "elapsed_seconds": 66,
+  "failure_cause": "ModuleNotFoundError: No module named 'pyttsx3'"
+}

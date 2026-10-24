@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:video_player/video_player.dart';
@@ -5,6 +7,7 @@ import 'package:video_player/video_player.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/theme/app_design_tokens.dart';
 import '../../shared/widgets/app_components.dart';
+import '../../shared/widgets/video_viewport.dart';
 import 'synchronized_media_controller.dart';
 
 class PlayerPage extends StatefulWidget {
@@ -29,8 +32,8 @@ class PlayerPage extends StatefulWidget {
   State<PlayerPage> createState() => _PlayerPageState();
 }
 
-class _PlayerPageState extends State<PlayerPage> {
-  late final SynchronizedMediaController _controller;
+class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
+  late SynchronizedMediaController _controller;
   Object? _initializationError;
   Duration? _pendingSeek;
   bool _expandedVideo = false;
@@ -38,22 +41,45 @@ class _PlayerPageState extends State<PlayerPage> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _createController();
+  }
+
+  void _createController() {
+    _initializationError = null;
+    _pendingSeek = null;
     _controller = SynchronizedMediaController(
       videoPath: widget.videoPath,
       audioPath: widget.audioPath,
     )..addListener(_refresh);
-    _initialize();
+    unawaited(_initialize(_controller));
   }
 
-  Future<void> _initialize() async {
+  Future<void> _initialize(SynchronizedMediaController controller) async {
     try {
-      await _controller.initialize();
+      await controller.initialize();
     } on Object catch (error, stackTrace) {
       debugPrint('[See2Sound] Erro ao inicializar player: $error');
       debugPrint('$stackTrace');
-      if (mounted) {
+      if (mounted && identical(controller, _controller)) {
         setState(() => _initializationError = error);
       }
+    }
+  }
+
+  void _replaceController() {
+    _controller
+      ..removeListener(_refresh)
+      ..dispose();
+    _createController();
+  }
+
+  @override
+  void didUpdateWidget(covariant PlayerPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.videoPath != widget.videoPath ||
+        oldWidget.audioPath != widget.audioPath) {
+      _replaceController();
     }
   }
 
@@ -62,7 +88,13 @@ class _PlayerPageState extends State<PlayerPage> {
   }
 
   @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state != AppLifecycleState.resumed) unawaited(_controller.pause());
+  }
+
+  @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _controller
       ..removeListener(_refresh)
       ..dispose();
@@ -110,7 +142,11 @@ class _PlayerPageState extends State<PlayerPage> {
           autofocus: true,
           child: Center(
             child: SingleChildScrollView(
-              padding: EdgeInsets.all(_expandedVideo ? 8 : 32),
+              padding: EdgeInsets.all(
+                _expandedVideo || MediaQuery.sizeOf(context).width < 600
+                    ? 8
+                    : 32,
+              ),
               child: ConstrainedBox(
                 constraints: BoxConstraints(
                   maxWidth: _expandedVideo ? 1600 : 1080,
@@ -129,25 +165,37 @@ class _PlayerPageState extends State<PlayerPage> {
   }
 
   Widget _buildContent(Color text, Color secondary, Color accent) {
-    if (_initializationError != null) {
+    if (_initializationError != null || _controller.errorMessage != null) {
       return Semantics(
         liveRegion: true,
-        child: Padding(
-          padding: const EdgeInsets.all(36),
-          child: Column(
-            children: [
-              Icon(Icons.error_outline, color: accent, size: 48),
-              const SizedBox(height: 16),
-              Text(
-                'Não foi possível abrir o vídeo e a audiodescrição.',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  color: text,
-                  fontSize: 18,
-                  fontWeight: FontWeight.w700,
+        child: VideoViewport(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                ExcludeSemantics(
+                  child: Icon(Icons.error_outline, color: accent, size: 40),
                 ),
-              ),
-            ],
+                const SizedBox(height: 12),
+                Text(
+                  _controller.errorMessage ??
+                      'Não foi possível abrir o vídeo e a audiodescrição. Verifique os arquivos e o formato de vídeo.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: text,
+                    fontSize: 17,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                FilledButton.icon(
+                  onPressed: () => setState(_replaceController),
+                  icon: const Icon(Icons.refresh),
+                  label: const Text('Tentar novamente'),
+                ),
+              ],
+            ),
           ),
         ),
       );
@@ -156,15 +204,23 @@ class _PlayerPageState extends State<PlayerPage> {
     if (!_controller.isInitialized) {
       return Semantics(
         liveRegion: true,
-        label: 'Preparando reprodução',
-        child: Padding(
-          padding: const EdgeInsets.all(48),
-          child: Column(
-            children: [
-              CircularProgressIndicator(color: accent),
-              const SizedBox(height: 16),
-              Text('Preparando reprodução...', style: TextStyle(color: text)),
-            ],
+        label: _controller.initializationMessage,
+        excludeSemantics: true,
+        child: VideoViewport(
+          child: Padding(
+            padding: const EdgeInsets.all(8),
+            child: Column(
+              children: [
+                CircularProgressIndicator(color: accent),
+                const SizedBox(height: 16),
+                Flexible(
+                  child: Text(
+                    _controller.initializationMessage,
+                    style: TextStyle(color: text),
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       );
@@ -204,12 +260,9 @@ class _PlayerPageState extends State<PlayerPage> {
           label: 'Vídeo ${widget.filename} com audiodescrição',
           child: ClipRRect(
             borderRadius: BorderRadius.circular(10),
-            child: AspectRatio(
-              aspectRatio: video.aspectRatio == 0 ? 16 / 9 : video.aspectRatio,
-              child: ColoredBox(
-                color: Colors.black,
-                child: VideoPlayer(_controller.videoController),
-              ),
+            child: VideoViewport(
+              videoSize: video.size,
+              child: VideoPlayer(_controller.videoController),
             ),
           ),
         ),
@@ -228,6 +281,8 @@ class _PlayerPageState extends State<PlayerPage> {
               value: positionMillis,
               min: 0,
               max: maxMillis,
+              semanticFormatterCallback: (value) =>
+                  _formatDuration(Duration(milliseconds: value.round())),
               onChanged: (value) {
                 setState(() {
                   _pendingSeek = Duration(milliseconds: value.round());
@@ -278,6 +333,7 @@ class _PlayerPageState extends State<PlayerPage> {
                 label: _controller.isPlaying ? 'Pausar' : 'Reproduzir',
                 child: Tooltip(
                   message: _controller.isPlaying ? 'Pausar' : 'Reproduzir',
+                  excludeFromSemantics: true,
                   child: ElevatedButton(
                     onPressed: _controller.togglePlayback,
                     style: ElevatedButton.styleFrom(
@@ -402,10 +458,8 @@ class _ControlButton extends StatelessWidget {
   Widget build(BuildContext context) {
     final accent = AppColors.accentFor(highContrast);
     return Semantics(
-      button: true,
-      label: semanticLabel,
       child: IconButton(
-        tooltip: tooltip,
+        tooltip: semanticLabel,
         onPressed: onPressed,
         icon: Icon(icon),
         color: accent,

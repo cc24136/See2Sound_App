@@ -1,0 +1,17 @@
+{
+  "api": "http://127.0.0.1:8000",
+  "sample": "video_teste.mp4",
+  "passed": false,
+  "job_id": "0aa20f53241e41ea86493af12ac60601",
+  "states": [
+    "uploading",
+    "queued",
+    "processing",
+    "error"
+  ],
+  "final_state": "error",
+  "backend_status": "failed",
+  "failure_handled_without_stuck_loading": true,
+  "elapsed_seconds": 38,
+  "failure_cause": "ModuleNotFoundError: No module named 'llama_cpp'"
+}

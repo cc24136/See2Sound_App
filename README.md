@@ -261,3 +261,6 @@ Developed as part of the **See2Sound Project**.
 
 - 💫​ Clara Alves dos Santos — [GitHub](https://github.com/ClarAlvez)
 - 🐶​​ João Victor Cussolim   — [GitHub](https://github.com/JoaoCussolim)
+
+
+A correção de inicialização e caminhos Unicode do player Windows está descrita em [WINDOWS_PLAYER_FIX.md](docs/WINDOWS_PLAYER_FIX.md), com reprodução do defeito, testes reais e roteiro manual.

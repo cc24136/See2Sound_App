@@ -14,6 +14,19 @@ class ApiSettingsException implements Exception {
 }
 
 class ApiSettingsService extends ChangeNotifier {
+  bool _disposed = false;
+
+  @override
+  void notifyListeners() {
+    if (!_disposed) super.notifyListeners();
+  }
+
+  @override
+  void dispose() {
+    _disposed = true;
+    super.dispose();
+  }
+
   static const _baseUrlKey = 'see2sound.api_base_url';
 
   String _baseUrl = ApiConfig.defaultBaseUrl;

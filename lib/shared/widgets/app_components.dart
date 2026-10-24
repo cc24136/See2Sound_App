@@ -85,7 +85,6 @@ class AppStatusMessage extends StatelessWidget {
     return Semantics(
       container: true,
       liveRegion: liveRegion,
-      label: message == null ? title : '$title. $message',
       child: Container(
         width: double.infinity,
         padding: const EdgeInsets.all(AppSpacing.md),
@@ -150,7 +149,6 @@ class AppEmptyState extends StatelessWidget {
   Widget build(BuildContext context) {
     return Semantics(
       container: true,
-      label: '$title. $message',
       child: Padding(
         padding: const EdgeInsets.symmetric(
           horizontal: AppSpacing.lg,

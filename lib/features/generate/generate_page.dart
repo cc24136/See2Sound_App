@@ -71,6 +71,8 @@ class _GeneratePageState extends State<GeneratePage> {
     if (_lastAnnouncedState == _controller.state) return;
     _lastAnnouncedState = _controller.state;
     if (_controller.state == GenerationUiState.ready ||
+        _controller.state == GenerationUiState.completedWithoutAudio ||
+        _controller.state == GenerationUiState.completedWithoutDescriptions ||
         _controller.state == GenerationUiState.error) {
       unawaited(
         widget.narrationService.announce(context, _controller.statusMessage),
@@ -110,6 +112,11 @@ class _GeneratePageState extends State<GeneratePage> {
       final fileSize = await File(path).length();
       if (!mounted) return;
       setState(() => _selectedFileSize = fileSize);
+      if (fileSize == 0) {
+        _controller.selectionCancelled();
+        _showMessage('O vídeo selecionado está vazio. Escolha outro arquivo.');
+        return;
+      }
       final duration = await _readDuration(path);
       if (!mounted) return;
       await _controller.startGeneration(
@@ -127,7 +134,7 @@ class _GeneratePageState extends State<GeneratePage> {
   Future<Duration?> _readDuration(String path) async {
     final video = VideoPlayerController.file(File(path));
     try {
-      await video.initialize();
+      await video.initialize().timeout(const Duration(seconds: 15));
       return video.value.duration;
     } catch (error, stackTrace) {
       debugPrint('[See2Sound] Não foi possível ler a duração do vídeo: $error');
@@ -144,24 +151,46 @@ class _GeneratePageState extends State<GeneratePage> {
     ).showSnackBar(SnackBar(content: Text(message)));
   }
 
-  Future<void> _openPlayer() async {
-    final videoPath = _controller.videoPath;
-    final audioPath = _controller.audioPath;
-    final filename = _controller.filename;
-    if (videoPath == null || audioPath == null || filename == null) return;
+  bool _openingPlayer = false;
 
-    await Navigator.of(context).push<void>(
-      MaterialPageRoute(
-        builder: (_) => PlayerPage(
-          videoPath: videoPath,
-          audioPath: audioPath,
-          filename: filename,
-          highContrast: widget.highContrast,
-          visualFocus: widget.visualFocus,
-          backTooltip: 'Voltar para Gerar',
+  Future<void> _openPlayer() async {
+    if (_openingPlayer || !mounted) return;
+    _openingPlayer = true;
+    try {
+      final videoPath = _controller.videoPath;
+      final audioPath = _controller.audioPath;
+      final filename = _controller.filename;
+      if (videoPath == null || audioPath == null || filename == null) return;
+
+      await Navigator.of(context).push<void>(
+        MaterialPageRoute(
+          builder: (_) => MediaQuery(
+            data: MediaQuery.of(context),
+            child: InheritedTheme.captureAll(
+              context,
+              PlayerPage(
+                videoPath: videoPath,
+                audioPath: audioPath,
+                filename: filename,
+                highContrast: widget.highContrast,
+                visualFocus: widget.visualFocus,
+                backTooltip: 'Voltar para Gerar',
+              ),
+            ),
+          ),
         ),
-      ),
-    );
+      );
+    } catch (error, stackTrace) {
+      debugPrint('[See2Sound] Não foi possível abrir reprodução: $error');
+      debugPrint('$stackTrace');
+      if (mounted) {
+        _showMessage(
+          'Não foi possível abrir a reprodução. Verifique os arquivos e tente novamente.',
+        );
+      }
+    } finally {
+      _openingPlayer = false;
+    }
   }
 
   @override
@@ -294,7 +323,6 @@ class _GenerationStatusPanel extends StatelessWidget {
 
     return Semantics(
       liveRegion: true,
-      label: controller.statusMessage,
       child: AppCard(
         highContrast: highContrast,
         simplified: simplifiedInterface,
@@ -397,8 +425,8 @@ class _GenerationStatusPanel extends StatelessWidget {
               const SizedBox(height: AppSpacing.md),
               Text(
                 completedWithoutDescriptions
-                    ? 'O Narrative Engine concluiu a análise e determinou que não havia descrições novas suficientes. Isso não é uma falha.'
-                    : 'O resultado textual foi concluído, mas o backend não disponibilizou uma faixa WAV para reprodução.',
+                    ? 'A análise foi concluída e não identificou trechos que precisassem de novas descrições.'
+                    : 'A análise foi concluída, mas o servidor não disponibilizou o áudio para reprodução.',
                 style: TextStyle(color: secondary, height: 1.4),
               ),
               const SizedBox(height: AppSpacing.md),
@@ -518,6 +546,7 @@ class _GenerationSteps extends StatelessWidget {
       children: [
         for (var index = 0; index < labels.length; index++)
           Semantics(
+            excludeSemantics: true,
             label:
                 '${labels[index]}, ${index < _currentStep
                     ? 'concluído'
@@ -539,14 +568,16 @@ class _GenerationSteps extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(width: AppSpacing.xs),
-                Text(
-                  labels[index],
-                  style: TextStyle(
-                    color: index <= _currentStep ? accent : secondary,
-                    fontSize: 13,
-                    fontWeight: index == _currentStep
-                        ? FontWeight.w700
-                        : FontWeight.w400,
+                Flexible(
+                  child: Text(
+                    labels[index],
+                    style: TextStyle(
+                      color: index <= _currentStep ? accent : secondary,
+                      fontSize: 13,
+                      fontWeight: index == _currentStep
+                          ? FontWeight.w700
+                          : FontWeight.w400,
+                    ),
                   ),
                 ),
               ],

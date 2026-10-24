@@ -1,0 +1,22 @@
+{
+  "api": "http://127.0.0.1:8000",
+  "sample": "video_teste.mp4",
+  "passed": false,
+  "job_id": "5297dc715e794f16adb3ffc82b46e552",
+  "states": [
+    "uploading",
+    "queued",
+    "processing",
+    "error"
+  ],
+  "final_state": "error",
+  "backend_status": "failed",
+  "failure_handled_without_stuck_loading": true,
+  "elapsed_seconds": 58,
+  "failure_cause": "ModuleNotFoundError: No module named 'pyttsx3'",
+  "live_health_and_missing_job_test": "passed",
+  "live_failed_job_endpoints_test": "passed",
+  "isolated_suite": "60 passed; 3 opt-in live tests skipped",
+  "static_analysis": "passed",
+  "windows_build": "blocked: symlink support required"
+}

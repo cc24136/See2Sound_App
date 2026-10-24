@@ -33,6 +33,7 @@ class GenerationController extends ChangeNotifier {
     required LibraryService libraryService,
     this.pollInterval = const Duration(seconds: 2),
     this.maxConsecutivePollErrors = 5,
+    this.maxMonitoringDuration = const Duration(minutes: 30),
   }) : _apiService = apiService ?? See2SoundApiService(),
        _storageSettingsService = storageSettingsService,
        _libraryService = libraryService;
@@ -43,6 +44,8 @@ class GenerationController extends ChangeNotifier {
   final Duration pollInterval;
   final int maxConsecutivePollErrors;
 
+  final Duration maxMonitoringDuration;
+  final Stopwatch _monitoring = Stopwatch();
   Timer? _pollTimer;
   bool _disposed = false;
   int _operationId = 0;
@@ -103,14 +106,17 @@ class GenerationController extends ChangeNotifier {
     GenerationUiState.error => _errorMessage ?? 'A geração falhou.',
   };
 
+  GenerationUiState _stateBeforeSelection = GenerationUiState.idle;
+
   void beginSelection() {
-    if (isBusy) return;
+    if (isBusy || _disposed) return;
+    _stateBeforeSelection = _state;
     _setState(GenerationUiState.selecting);
   }
 
   void selectionCancelled() {
     if (_state == GenerationUiState.selecting) {
-      _setState(GenerationUiState.idle);
+      _setState(_stateBeforeSelection);
     }
   }
 
@@ -119,7 +125,8 @@ class GenerationController extends ChangeNotifier {
     required String filename,
     Duration? videoDuration,
   }) async {
-    if (_state == GenerationUiState.uploading ||
+    if (_disposed ||
+        _state == GenerationUiState.uploading ||
         _state == GenerationUiState.queued ||
         _state == GenerationUiState.processing ||
         _state == GenerationUiState.downloadingAudio) {
@@ -143,6 +150,10 @@ class GenerationController extends ChangeNotifier {
     _retryCurrentJob = false;
     _jobCompleted = false;
     _consecutivePollErrors = 0;
+    _monitoring
+      ..reset()
+      ..start();
+    _setState(GenerationUiState.uploading);
 
     try {
       final directory = await _storageSettingsService
@@ -150,12 +161,20 @@ class GenerationController extends ChangeNotifier {
       if (!_isCurrent(operationId)) return;
       _destinationDirectoryPath = directory.path;
     } on StorageSettingsException catch (error) {
+      if (!_isCurrent(operationId)) return;
       _requiresStorageConfiguration = true;
       _fail(error.message);
       return;
+    } catch (error, stackTrace) {
+      if (!_isCurrent(operationId)) return;
+      debugPrint('[See2Sound] Falha ao verificar armazenamento: $error');
+      debugPrint('$stackTrace');
+      _requiresStorageConfiguration = true;
+      _fail(
+        'Não foi possível acessar a pasta de armazenamento. Escolha uma pasta nas configurações.',
+      );
+      return;
     }
-    _setState(GenerationUiState.uploading);
-
     try {
       if (!await _apiService.healthCheck()) {
         throw const ApiException('O servidor não respondeu como esperado.');
@@ -184,6 +203,10 @@ class GenerationController extends ChangeNotifier {
   }
 
   Future<void> retry() async {
+    if (_disposed || isBusy) return;
+    _monitoring
+      ..reset()
+      ..start();
     final jobId = _jobId;
     if (_retryCurrentJob && jobId != null) {
       _retryCurrentJob = false;
@@ -209,6 +232,13 @@ class GenerationController extends ChangeNotifier {
   Future<void> _poll(int operationId) async {
     final jobId = _jobId;
     if (jobId == null || !_isCurrent(operationId)) return;
+    if (_monitoring.elapsed >= maxMonitoringDuration) {
+      _retryCurrentJob = true;
+      _fail(
+        'O processamento está demorando mais que o esperado. Tente continuar o acompanhamento em instantes.',
+      );
+      return;
+    }
 
     try {
       final snapshot = await _apiService.getGenerationStatus(jobId);
@@ -229,7 +259,7 @@ class GenerationController extends ChangeNotifier {
           await _completeGeneration(jobId, operationId);
         case GenerationStatus.failed:
           _pollTimer?.cancel();
-          _fail(snapshot.error ?? 'A geração falhou no servidor.');
+          _fail('A geração falhou no servidor. Tente novamente.');
       }
     } on ApiException catch (error) {
       if (!_isCurrent(operationId)) return;
@@ -295,7 +325,7 @@ class GenerationController extends ChangeNotifier {
 
       try {
         _metadata = await _apiService.getAudioDescriptionMetadata(jobId);
-      } on ApiException catch (error, stackTrace) {
+      } catch (error, stackTrace) {
         debugPrint('[See2Sound] Metadata indisponível: $error');
         debugPrint('$stackTrace');
         _metadata = null;
@@ -343,6 +373,7 @@ class GenerationController extends ChangeNotifier {
       _setState(GenerationUiState.ready);
     } on LibraryException catch (error) {
       if (_isCurrent(operationId)) {
+        _retryCurrentJob = true;
         _fail(error.message);
       }
     } on ApiException catch (error) {
@@ -351,11 +382,13 @@ class GenerationController extends ChangeNotifier {
           _setState(GenerationUiState.completedWithoutAudio);
         } else {
           _retryCurrentJob =
-              error.statusCode == null || error.statusCode == 409;
+              error.statusCode == null ||
+              error.statusCode == 409 ||
+              (error.statusCode != null && error.statusCode! >= 500);
           _fail(
             error.statusCode == 409
                 ? 'O resultado ainda não está disponível. Tente novamente em instantes.'
-                : error.message,
+                : _friendlyMessage(error),
           );
         }
       }
@@ -372,7 +405,7 @@ class GenerationController extends ChangeNotifier {
   String _friendlyMessage(ApiException error) {
     final statusCode = error.statusCode;
     if (statusCode == null) {
-      return 'Não foi possível conectar ao servidor.';
+      return error.message;
     }
     return switch (statusCode) {
       404 => 'Geração não encontrada.',

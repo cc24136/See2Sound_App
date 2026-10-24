@@ -1,5 +1,10 @@
 cmake_minimum_required(VERSION 3.14)
 project(runner LANGUAGES CXX)
+# Compatibilidade temporária com coroutines experimentais
+# utilizadas por plugins Windows.
+add_compile_definitions(
+  _SILENCE_EXPERIMENTAL_COROUTINE_DEPRECATION_WARNINGS
+)
 
 # Define the application target. To change its name, change BINARY_NAME in the
 # top-level CMakeLists.txt, not the value here, or `flutter run` will no longer

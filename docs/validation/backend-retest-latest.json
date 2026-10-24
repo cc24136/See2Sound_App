@@ -1,0 +1,33 @@
+{
+  "api": "http://127.0.0.1:8000",
+  "sample": "video_teste.mp4",
+  "passed": true,
+  "job_id": "3e337c58bc354792aed1efdd344c0128",
+  "states": [
+    "uploading",
+    "queued",
+    "processing",
+    "downloadingAudio",
+    "ready"
+  ],
+  "final_state": "ready",
+  "backend_status": "completed",
+  "wav_bytes": 2600180,
+  "descriptions_total": 7,
+  "descriptions_inserted": 1,
+  "library_restored": true,
+  "elapsed_seconds": 71,
+  "wav_sha256": "74c849ed21b406fc1c2064c5e19b271247d0d406df994ddfd8cd1c97bd65eed6",
+  "wav_duration_seconds": 14.74,
+  "wav_sample_rate": 44100,
+  "wav_channels": 2,
+  "wav_sample_width_bytes": 2,
+  "wav_content_type": "audio/wav",
+  "live_tests_passed": 3,
+  "static_analysis": "passed",
+  "isolated_suite": "60 passed; 3 opt-in live tests skipped",
+  "windows_build": "blocked: symlink support required",
+  "wav_rms": 2142.246,
+  "descriptions_skipped": 6,
+  "metadata_cues": 7
+}

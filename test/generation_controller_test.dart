@@ -10,6 +10,7 @@ import 'package:see2sound_app/features/generate/models/generation_result.dart';
 import 'package:see2sound_app/features/generate/models/generation_status.dart';
 import 'package:see2sound_app/features/generate/services/see2sound_api_service.dart';
 import 'package:see2sound_app/features/library/services/library_service.dart';
+import 'package:see2sound_app/features/library/models/audio_description_library_item.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
@@ -81,7 +82,10 @@ void main() {
     try {
       await harness.start();
       await _waitFor(() => harness.controller.state == GenerationUiState.error);
-      expect(harness.controller.errorMessage, 'Falha no TTS');
+      expect(
+        harness.controller.errorMessage,
+        'A geração falhou no servidor. Tente novamente.',
+      );
       expect(harness.api.downloadCalls, 0);
     } finally {
       await harness.dispose();
@@ -183,6 +187,99 @@ void main() {
     }
   });
 
+  test('duplo envio durante validação da pasta cria somente um job', () async {
+    final harness = await _ControllerHarness.create(api: _FakeApiService());
+    try {
+      await Future.wait([harness.start(), harness.start()]);
+      expect(harness.api.createCalls, 1);
+    } finally {
+      await harness.dispose();
+    }
+  });
+
+  test('cancelar outra seleção preserva resultado pronto', () async {
+    final harness = await _ControllerHarness.create(api: _FakeApiService());
+    try {
+      await harness.start();
+      final audio = harness.controller.audioPath;
+      harness.controller.beginSelection();
+      harness.controller.selectionCancelled();
+      expect(harness.controller.state, GenerationUiState.ready);
+      expect(harness.controller.audioPath, audio);
+    } finally {
+      await harness.dispose();
+    }
+  });
+
+  test('falha 503 ao finalizar recupera mesmo job sem outro upload', () async {
+    final harness = await _ControllerHarness.create(
+      api: _FakeApiService(resultErrorsBeforeSuccess: 1),
+    );
+    try {
+      await harness.start();
+      expect(harness.controller.state, GenerationUiState.error);
+      await harness.controller.retry();
+      expect(harness.controller.state, GenerationUiState.ready);
+      expect(harness.api.createCalls, 1);
+    } finally {
+      await harness.dispose();
+    }
+  });
+
+  test('falha na biblioteca recupera WAV baixado sem reprocessar', () async {
+    final harness = await _ControllerHarness.create(
+      api: _FakeApiService(),
+      library: _FailOnceLibrary(),
+    );
+    try {
+      await harness.start();
+      expect(harness.controller.state, GenerationUiState.error);
+      await harness.controller.retry();
+      expect(harness.controller.state, GenerationUiState.ready);
+      expect(harness.api.createCalls, 1);
+      expect(harness.api.downloadCalls, 1);
+      expect(harness.library.items, hasLength(1));
+    } finally {
+      await harness.dispose();
+    }
+  });
+
+  test(
+    'limite de acompanhamento encerra carregamento com erro recuperável',
+    () async {
+      final harness = await _ControllerHarness.create(
+        api: _FakeApiService(),
+        maxMonitoringDuration: Duration.zero,
+      );
+      try {
+        await harness.start();
+        expect(harness.controller.state, GenerationUiState.error);
+        expect(harness.controller.isBusy, isFalse);
+        expect(harness.controller.errorMessage, contains('demorando'));
+        expect(harness.api.createCalls, 1);
+      } finally {
+        await harness.dispose();
+      }
+    },
+  );
+
+  test('falha persistente de conexão permite retomar o mesmo job', () async {
+    final harness = await _ControllerHarness.create(
+      api: _FakeApiService(statusErrorsBeforeSuccess: 1),
+      maxConsecutivePollErrors: 1,
+    );
+    try {
+      await harness.start();
+      expect(harness.controller.state, GenerationUiState.error);
+      expect(harness.controller.isBusy, isFalse);
+      await harness.controller.retry();
+      expect(harness.controller.state, GenerationUiState.ready);
+      expect(harness.api.createCalls, 1);
+    } finally {
+      await harness.dispose();
+    }
+  });
+
   test('dispose impede operação antiga de alterar estado', () async {
     final api = _FakeApiService(statusDelay: const Duration(milliseconds: 30));
     final harness = await _ControllerHarness.create(api: api);
@@ -204,6 +301,9 @@ class _ControllerHarness {
 
   static Future<_ControllerHarness> create({
     required _FakeApiService api,
+    LibraryService? library,
+    Duration maxMonitoringDuration = const Duration(minutes: 30),
+    int maxConsecutivePollErrors = 5,
   }) async {
     final directory = await Directory.systemTemp.createTemp(
       'see2sound-controller-test-',
@@ -211,13 +311,15 @@ class _ControllerHarness {
     final storage = StorageSettingsService();
     await storage.initialize();
     await storage.setDirectoryPath(directory.path);
-    final library = LibraryService();
+    library ??= LibraryService();
     await library.initialize();
     final controller = GenerationController(
       apiService: api,
       storageSettingsService: storage,
       libraryService: library,
       pollInterval: const Duration(milliseconds: 1),
+      maxMonitoringDuration: maxMonitoringDuration,
+      maxConsecutivePollErrors: maxConsecutivePollErrors,
     );
     return _ControllerHarness(
       directory: directory,
@@ -258,6 +360,7 @@ class _FakeApiService extends See2SoundApiService {
     List<GenerationStatus>? statuses,
     GenerationResult? result,
     this.statusErrorsBeforeSuccess = 0,
+    this.resultErrorsBeforeSuccess = 0,
     this.statusDelay = Duration.zero,
   }) : _statuses = List.of(statuses ?? const [GenerationStatus.completed]),
        _result =
@@ -277,6 +380,7 @@ class _FakeApiService extends See2SoundApiService {
   final GenerationResult _result;
   final int statusErrorsBeforeSuccess;
   final Duration statusDelay;
+  int resultErrorsBeforeSuccess;
   int createCalls = 0;
   int statusCalls = 0;
   int downloadCalls = 0;
@@ -331,15 +435,19 @@ class _FakeApiService extends See2SoundApiService {
   }
 
   @override
-  Future<GenerationResult> getGenerationResult(String jobId) async =>
-      GenerationResult(
-        jobId: jobId,
-        status: _result.status,
-        narrativeTimeline: _result.narrativeTimeline,
-        hasVoiceEngine: _result.hasVoiceEngine,
-        hasAudioDescription: _result.hasAudioDescription,
-        artifactUrls: _result.artifactUrls,
-      );
+  Future<GenerationResult> getGenerationResult(String jobId) async {
+    if (resultErrorsBeforeSuccess-- > 0) {
+      throw const ApiException('Servidor ocupado', statusCode: 503);
+    }
+    return GenerationResult(
+      jobId: jobId,
+      status: _result.status,
+      narrativeTimeline: _result.narrativeTimeline,
+      hasVoiceEngine: _result.hasVoiceEngine,
+      hasAudioDescription: _result.hasAudioDescription,
+      artifactUrls: _result.artifactUrls,
+    );
+  }
 
   @override
   Future<AudioDescriptionMetadata> getAudioDescriptionMetadata(
@@ -371,4 +479,16 @@ class _FakeApiService extends See2SoundApiService {
 
   @override
   void close() {}
+}
+
+class _FailOnceLibrary extends LibraryService {
+  bool failNext = true;
+  @override
+  Future<void> addItem(AudioDescriptionLibraryItem item) async {
+    if (failNext) {
+      failNext = false;
+      throw const LibraryException('Falha de gravação');
+    }
+    await super.addItem(item);
+  }
 }

@@ -19,8 +19,11 @@ class AudioDescriptionLibraryItem {
     if (id is! String ||
         id.isEmpty ||
         originalFilename is! String ||
+        originalFilename.trim().isEmpty ||
         originalVideoPath is! String ||
+        originalVideoPath.trim().isEmpty ||
         audioDescriptionPath is! String ||
+        audioDescriptionPath.trim().isEmpty ||
         createdAt == null) {
       throw const FormatException('Registro de audiodescrição inválido.');
     }
@@ -32,7 +35,7 @@ class AudioDescriptionLibraryItem {
       originalVideoPath: originalVideoPath,
       audioDescriptionPath: audioDescriptionPath,
       createdAt: createdAt,
-      duration: durationMilliseconds is int
+      duration: durationMilliseconds is int && durationMilliseconds >= 0
           ? Duration(milliseconds: durationMilliseconds)
           : null,
       jobId: json['job_id'] as String?,

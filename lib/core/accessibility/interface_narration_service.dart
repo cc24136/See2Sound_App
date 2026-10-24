@@ -33,5 +33,11 @@ class InterfaceNarrationService {
     };
   }
 
-  Future<void> stop() => _textToSpeech.stop();
+  Future<void> stop() async {
+    try {
+      await _textToSpeech.stop();
+    } catch (error) {
+      debugPrint('[See2Sound] Não foi possível interromper a narração: $error');
+    }
+  }
 }

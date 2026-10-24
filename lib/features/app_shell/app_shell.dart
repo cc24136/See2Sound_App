@@ -78,62 +78,49 @@ class _AppShellState extends State<AppShell> {
   Widget build(BuildContext context) {
     final highContrast = appSettings.highContrast;
     final visualFocus = appSettings.visualFocus;
-    Widget page;
-
-    switch (currentPage) {
-      case AppPage.generate:
-        page = GeneratePage(
-          highContrast: highContrast,
-          visualFocus: visualFocus,
-          storageSettingsService: storageSettingsService,
-          libraryService: libraryService,
-          reduceMotion: appSettings.reduceMotion,
-          simplifiedInterface: appSettings.simplifiedInterface,
-          narrationService: narrationService,
-          apiSettingsService: apiSettingsService,
-          onOpenSettings: () {
-            setState(() {
-              currentPage = AppPage.settings;
-            });
-          },
-          onOpenLibrary: () {
-            setState(() => currentPage = AppPage.library);
-          },
-        );
-        break;
-
-      case AppPage.library:
-        page = LibraryPage(
-          highContrast: highContrast,
-          visualFocus: visualFocus,
-          libraryService: libraryService,
-          reduceMotion: appSettings.reduceMotion,
-          simplifiedInterface: appSettings.simplifiedInterface,
-          narrationService: narrationService,
-          onNewVideo: () {
-            setState(() {
-              currentPage = AppPage.generate;
-            });
-          },
-        );
-        break;
-
-      case AppPage.settings:
-        page = SettingsPage(
-          settings: appSettings,
-          storageSettingsService: storageSettingsService,
-          apiSettingsService: apiSettingsService,
-          narrationService: narrationService,
-        );
-        break;
-    }
+    final pages = <Widget>[
+      GeneratePage(
+        highContrast: highContrast,
+        visualFocus: visualFocus,
+        storageSettingsService: storageSettingsService,
+        libraryService: libraryService,
+        reduceMotion: appSettings.reduceMotion,
+        simplifiedInterface: appSettings.simplifiedInterface,
+        narrationService: narrationService,
+        apiSettingsService: apiSettingsService,
+        onOpenSettings: () {
+          setState(() {
+            currentPage = AppPage.settings;
+          });
+        },
+        onOpenLibrary: () {
+          setState(() => currentPage = AppPage.library);
+        },
+      ),
+      LibraryPage(
+        highContrast: highContrast,
+        visualFocus: visualFocus,
+        libraryService: libraryService,
+        reduceMotion: appSettings.reduceMotion,
+        simplifiedInterface: appSettings.simplifiedInterface,
+        narrationService: narrationService,
+        onNewVideo: () {
+          setState(() {
+            currentPage = AppPage.generate;
+          });
+        },
+      ),
+      SettingsPage(
+        settings: appSettings,
+        storageSettingsService: storageSettingsService,
+        apiSettingsService: apiSettingsService,
+        narrationService: narrationService,
+      ),
+    ];
 
     final mediaQuery = MediaQuery.of(context);
-    final systemScale = mediaQuery.textScaler.scale(1).clamp(1.0, 1.3);
-    final effectiveScale = (systemScale * appSettings.textSize.scale).clamp(
-      0.9,
-      1.7,
-    );
+    final effectiveScale =
+        mediaQuery.textScaler.scale(1) * appSettings.textSize.scale;
     return Theme(
       data: AppTheme.dark(highContrast: highContrast),
       child: MediaQuery(
@@ -164,7 +151,10 @@ class _AppShellState extends State<AppShell> {
                     Expanded(
                       child: ColoredBox(
                         color: AppColors.backgroundFor(highContrast),
-                        child: page,
+                        child: IndexedStack(
+                          index: currentPage.index,
+                          children: pages,
+                        ),
                       ),
                     ),
                   ],

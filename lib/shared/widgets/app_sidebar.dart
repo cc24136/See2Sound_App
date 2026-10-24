@@ -42,94 +42,108 @@ class AppSidebar extends StatelessWidget {
             right: BorderSide(color: border, width: highContrast ? 2 : 1),
           ),
         ),
-        child: Column(
-          children: [
-            SizedBox(
-              height: 104,
-              child: Padding(
-                padding: EdgeInsets.symmetric(horizontal: compact ? 12 : 22),
-                child: Row(
-                  mainAxisAlignment: compact
-                      ? MainAxisAlignment.center
-                      : MainAxisAlignment.start,
+        child: LayoutBuilder(
+          builder: (context, constraints) => SingleChildScrollView(
+            child: ConstrainedBox(
+              constraints: BoxConstraints(minHeight: constraints.maxHeight),
+              child: IntrinsicHeight(
+                child: Column(
                   children: [
-                    ExcludeSemantics(
-                      child: Image.asset(
-                        'assets/images/logo.png',
-                        width: compact ? 44 : 52,
-                        height: compact ? 44 : 52,
-                      ),
-                    ),
-                    if (!compact) ...[
-                      const SizedBox(width: AppSpacing.sm),
-                      Expanded(
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          crossAxisAlignment: CrossAxisAlignment.start,
+                    SizedBox(
+                      height: 104,
+                      child: Padding(
+                        padding: EdgeInsets.symmetric(
+                          horizontal: compact ? 12 : 22,
+                        ),
+                        child: Row(
+                          mainAxisAlignment: compact
+                              ? MainAxisAlignment.center
+                              : MainAxisAlignment.start,
                           children: [
-                            Text(
-                              'See2Sound',
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                color: text,
-                                fontSize: 21,
-                                fontWeight: FontWeight.w800,
+                            ExcludeSemantics(
+                              child: Image.asset(
+                                'assets/images/logo.png',
+                                width: compact ? 44 : 52,
+                                height: compact ? 44 : 52,
                               ),
                             ),
-                            Text(
-                              'Audiodescrição acessível',
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(color: secondary, fontSize: 12),
-                            ),
+                            if (!compact) ...[
+                              const SizedBox(width: AppSpacing.sm),
+                              Expanded(
+                                child: Column(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      'See2Sound',
+                                      overflow: TextOverflow.ellipsis,
+                                      style: TextStyle(
+                                        color: text,
+                                        fontSize: 21,
+                                        fontWeight: FontWeight.w800,
+                                      ),
+                                    ),
+                                    Text(
+                                      'Audiodescrição acessível',
+                                      overflow: TextOverflow.ellipsis,
+                                      style: TextStyle(
+                                        color: secondary,
+                                        fontSize: 12,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
                           ],
                         ),
                       ),
-                    ],
+                    ),
+                    Divider(height: highContrast ? 2 : 1),
+                    const SizedBox(height: AppSpacing.md),
+                    _NavigationButton(
+                      order: 1,
+                      icon: Icons.auto_awesome_outlined,
+                      label: 'Gerar audiodescrição',
+                      selected: currentPage == AppPage.generate,
+                      compact: compact,
+                      highContrast: highContrast,
+                      visualFocus: visualFocus,
+                      reduceMotion: reduceMotion,
+                      simplifiedInterface: simplifiedInterface,
+                      onTap: () => onChangePage(AppPage.generate),
+                    ),
+                    _NavigationButton(
+                      order: 2,
+                      icon: Icons.video_library_outlined,
+                      label: 'Suas audiodescrições',
+                      selected: currentPage == AppPage.library,
+                      compact: compact,
+                      highContrast: highContrast,
+                      visualFocus: visualFocus,
+                      reduceMotion: reduceMotion,
+                      simplifiedInterface: simplifiedInterface,
+                      onTap: () => onChangePage(AppPage.library),
+                    ),
+                    const Spacer(),
+                    _NavigationButton(
+                      order: 3,
+                      icon: Icons.settings_outlined,
+                      label: 'Configurações',
+                      selected: currentPage == AppPage.settings,
+                      compact: compact,
+                      highContrast: highContrast,
+                      visualFocus: visualFocus,
+                      reduceMotion: reduceMotion,
+                      simplifiedInterface: simplifiedInterface,
+                      onTap: () => onChangePage(AppPage.settings),
+                    ),
+                    const SizedBox(height: AppSpacing.lg),
                   ],
                 ),
               ),
             ),
-            Divider(height: highContrast ? 2 : 1),
-            const SizedBox(height: AppSpacing.md),
-            _NavigationButton(
-              order: 1,
-              icon: Icons.auto_awesome_outlined,
-              label: 'Gerar audiodescrição',
-              selected: currentPage == AppPage.generate,
-              compact: compact,
-              highContrast: highContrast,
-              visualFocus: visualFocus,
-              reduceMotion: reduceMotion,
-              simplifiedInterface: simplifiedInterface,
-              onTap: () => onChangePage(AppPage.generate),
-            ),
-            _NavigationButton(
-              order: 2,
-              icon: Icons.video_library_outlined,
-              label: 'Suas audiodescrições',
-              selected: currentPage == AppPage.library,
-              compact: compact,
-              highContrast: highContrast,
-              visualFocus: visualFocus,
-              reduceMotion: reduceMotion,
-              simplifiedInterface: simplifiedInterface,
-              onTap: () => onChangePage(AppPage.library),
-            ),
-            const Spacer(),
-            _NavigationButton(
-              order: 3,
-              icon: Icons.settings_outlined,
-              label: 'Configurações',
-              selected: currentPage == AppPage.settings,
-              compact: compact,
-              highContrast: highContrast,
-              visualFocus: visualFocus,
-              reduceMotion: reduceMotion,
-              simplifiedInterface: simplifiedInterface,
-              onTap: () => onChangePage(AppPage.settings),
-            ),
-            const SizedBox(height: AppSpacing.lg),
-          ],
+          ),
         ),
       ),
     );

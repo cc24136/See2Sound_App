@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:see2sound_app/core/storage/storage_settings_service.dart';
@@ -72,6 +73,53 @@ void main() {
     expect(service.loadError, isNotNull);
   });
 
+  test(
+    'alterações concorrentes não perdem itens e sobrevivem à reinicialização',
+    () async {
+      final service = LibraryService();
+      await Future.wait(List.generate(10, (i) => service.addItem(_item('$i'))));
+      expect(service.items, hasLength(10));
+      final restored = LibraryService();
+      await restored.initialize();
+      expect(restored.items, hasLength(10));
+    },
+  );
+
+  test(
+    'recupera registros válidos e preserva dados originais antes de gravar',
+    () async {
+      final original = jsonEncode([
+        _item('válido').toJson(),
+        {'id': 1},
+        _item('válido').toJson(),
+      ]);
+      SharedPreferences.setMockInitialValues({
+        'see2sound.audio_description_library': original,
+      });
+      final service = LibraryService();
+      await service.initialize();
+      expect(service.items, hasLength(1));
+      expect(service.loadError, isNotNull);
+      await service.addItem(_item('novo'));
+      final preferences = await SharedPreferences.getInstance();
+      final backup = preferences.getKeys().singleWhere(
+        (key) =>
+            key.startsWith('see2sound.audio_description_library.recovery.'),
+      );
+      expect(preferences.getString(backup), original);
+      final restored = LibraryService();
+      await restored.initialize();
+      expect(restored.items, hasLength(2));
+    },
+  );
+
+  test('serviço descartado durante inicialização não notifica', () async {
+    final service = LibraryService();
+    final pending = service.initialize();
+    service.dispose();
+    await pending;
+  });
+
   test('renomeia o WAV e atualiza o registro persistido', () async {
     final directory = await Directory.systemTemp.createTemp(
       'see2sound-library-test-',
@@ -132,3 +180,12 @@ void main() {
     expect(restored.items.single.originalVideoPath, '/novo/video.mp4');
   });
 }
+
+AudioDescriptionLibraryItem _item(String id) => AudioDescriptionLibraryItem(
+  id: id,
+  originalFilename: '$id.mp4',
+  originalVideoPath: '/$id.mp4',
+  audioDescriptionPath: '/$id.wav',
+  createdAt: DateTime(2026, 10, 24),
+  jobId: id,
+);

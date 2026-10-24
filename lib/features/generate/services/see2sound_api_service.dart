@@ -25,8 +25,17 @@ class See2SoundApiService {
   final Uri Function(String path) _uriBuilder;
   final Duration requestTimeout;
   final Duration uploadTimeout;
+  Uri? _jobBase;
+
+  Uri _uri(String path) {
+    final base = _jobBase;
+    return base == null
+        ? _uriBuilder(path)
+        : base.replace(path: '${base.path}$path');
+  }
 
   Future<bool> healthCheck() async {
+    _jobBase = null;
     final response = await _get('/health');
     final json = _decodeObject(response);
     return json['status'] == 'ok';
@@ -41,22 +50,43 @@ class See2SoundApiService {
     bool runNarrative = true,
     bool runTts = true,
   }) async {
-    final request =
-        http.MultipartRequest('POST', _uriBuilder('/api/v1/generations'))
-          ..fields.addAll({
-            'frame_interval_seconds': frameIntervalSeconds.toString(),
-            'whisper_language': whisperLanguage,
-            'run_spectra': runSpectra.toString(),
-            'run_narrative': runNarrative.toString(),
-            'run_tts': runTts.toString(),
-          })
-          ..files.add(
-            await http.MultipartFile.fromPath(
-              'video',
-              videoPath,
-              filename: filename,
-            ),
-          );
+    try {
+      final file = File(videoPath);
+      if (!await file.exists() || await file.length() == 0) {
+        throw const ApiException(
+          'O vídeo não está disponível ou está vazio. Selecione outro arquivo.',
+          statusCode: 400,
+        );
+      }
+    } on FileSystemException catch (error) {
+      throw ApiException(
+        'Não foi possível ler o vídeo selecionado.',
+        statusCode: 400,
+        cause: error,
+      );
+    }
+    final endpoint = _uriBuilder('/api/v1/generations');
+    _jobBase = endpoint.replace(
+      path: endpoint.path.substring(
+        0,
+        endpoint.path.length - '/api/v1/generations'.length,
+      ),
+    );
+    final request = http.MultipartRequest('POST', _uri('/api/v1/generations'))
+      ..fields.addAll({
+        'frame_interval_seconds': frameIntervalSeconds.toString(),
+        'whisper_language': whisperLanguage,
+        'run_spectra': runSpectra.toString(),
+        'run_narrative': runNarrative.toString(),
+        'run_tts': runTts.toString(),
+      })
+      ..files.add(
+        await http.MultipartFile.fromPath(
+          'video',
+          videoPath,
+          filename: filename,
+        ),
+      );
 
     try {
       final streamed = await _client.send(request).timeout(uploadTimeout);
@@ -107,78 +137,114 @@ class See2SoundApiService {
     required String destinationDirectoryPath,
     required String originalFilename,
   }) async {
-    final response = await _get('/api/v1/generations/$jobId/audio-description');
-    final bytes = response.bodyBytes;
-
+    File? partialFile;
     try {
-      final contentType = response.headers['content-type']?.toLowerCase();
-      if (bytes.isEmpty) {
-        throw const FormatException('O servidor retornou um áudio vazio.');
-      }
-      if (contentType != null && !contentType.startsWith('audio/')) {
-        throw FormatException('Content-Type inesperado: $contentType');
-      }
-      if (!_hasWavHeader(bytes)) {
-        throw const FormatException(
-          'O arquivo recebido não possui cabeçalho WAV.',
+      final response = await _client
+          .send(
+            http.Request(
+              'GET',
+              _uri('/api/v1/generations/$jobId/audio-description'),
+            ),
+          )
+          .timeout(requestTimeout);
+      if (response.statusCode != 200) {
+        _ensureSuccess(
+          await http.Response.fromStream(response).timeout(requestTimeout),
         );
       }
-
+      final contentType = response.headers['content-type']?.toLowerCase();
+      if (contentType != null && !contentType.startsWith('audio/')) {
+        await response.stream.take(0).drain<void>();
+        throw const FormatException('O servidor não retornou áudio.');
+      }
       final destinationDirectory = Directory(destinationDirectoryPath);
       if (!await destinationDirectory.exists()) {
+        await response.stream.take(0).drain<void>();
         throw const ApiException(
           'A pasta configurada para armazenamento não foi encontrada.',
         );
       }
-
-      final safeStem = _safeFileStem(originalFilename);
-      final file = await _availableAudioFile(destinationDirectory, safeStem);
-      final partialFile = File('${file.path}.part');
-
-      debugPrint('See2Sound storage directory: ${destinationDirectory.path}');
-      debugPrint('See2Sound audio file: ${file.path}');
-      debugPrint('See2Sound audio bytes received: ${bytes.length}');
-
+      final file = await _availableAudioFile(
+        destinationDirectory,
+        _safeFileStem(originalFilename),
+      );
+      partialFile = File('${file.path}.part');
+      final sink = partialFile.openWrite();
+      final header = <int>[];
+      var received = 0;
+      final elapsed = Stopwatch()..start();
+      var streamCompleted = false;
       try {
-        await partialFile.writeAsBytes(bytes, flush: true);
-        if (await file.exists()) {
-          throw FileSystemException(
-            'O arquivo de destino passou a existir durante o download.',
-            file.path,
-          );
-        }
-        await partialFile.rename(file.path);
-      } finally {
-        if (await partialFile.exists()) {
-          await partialFile.delete();
-        }
-      }
-
-      final fileExists = await file.exists();
-      final fileSize = fileExists ? await file.length() : 0;
-      debugPrint('See2Sound audio file exists: $fileExists');
-      debugPrint('See2Sound audio file size: $fileSize bytes');
-
-      if (!fileExists || fileSize != bytes.length) {
-        throw FileSystemException(
-          'O arquivo de áudio não foi gravado completamente.',
-          file.path,
+        // Stream directly to disk: long WAV files must not be buffered in RAM.
+        await sink.addStream(
+          response.stream.timeout(requestTimeout).map((chunk) {
+            if (elapsed.elapsed > uploadTimeout) {
+              throw TimeoutException('Download excedeu o limite de tempo.');
+            }
+            if (header.length < 12) {
+              header.addAll(chunk.take(12 - header.length));
+            }
+            received += chunk.length;
+            return chunk;
+          }),
         );
+        await sink.flush();
+        streamCompleted = true;
+      } finally {
+        if (streamCompleted) {
+          await sink.close();
+        } else {
+          // Preserve the original connection error if addStream already closed the sink.
+          try {
+            await sink.close();
+          } catch (_) {}
+        }
       }
-
+      if (!_hasWavHeader(header)) {
+        throw const FormatException('Áudio vazio ou cabeçalho WAV inválido.');
+      }
+      final expectedLength = response.contentLength;
+      if (expectedLength != null && received != expectedLength) {
+        throw const FormatException('Download de áudio incompleto.');
+      }
+      if (await file.exists()) {
+        throw const FileSystemException('O arquivo de destino já existe.');
+      }
+      await partialFile.rename(file.path);
+      partialFile = null;
       return file.path;
     } on ApiException {
       rethrow;
-    } on Object catch (error, stackTrace) {
-      debugPrint('See2Sound failed to save audio: $error');
-      debugPrintStack(
-        label: 'See2Sound audio save stack trace',
-        stackTrace: stackTrace,
+    } on TimeoutException catch (error) {
+      throw ApiException(
+        'O download demorou mais que o esperado. Tente recuperar o resultado novamente.',
+        cause: error,
       );
+    } on SocketException catch (error) {
+      throw ApiException(
+        'A conexão foi interrompida durante o download. Tente novamente.',
+        cause: error,
+      );
+    } on FormatException catch (error) {
+      throw ApiException(
+        'O servidor enviou um áudio inválido ou incompleto. Tente recuperar o resultado novamente.',
+        cause: error,
+      );
+    } catch (error, stackTrace) {
+      debugPrint('[See2Sound] Falha ao salvar áudio: $error');
+      debugPrint('$stackTrace');
       throw ApiException(
         'Não foi possível salvar a audiodescrição na pasta configurada. Verifique a permissão de escrita.',
         cause: error,
       );
+    } finally {
+      if (partialFile != null) {
+        try {
+          if (await partialFile.exists()) await partialFile.delete();
+        } catch (error) {
+          debugPrint('[See2Sound] Falha ao limpar download parcial: $error');
+        }
+      }
     }
   }
 
@@ -221,9 +287,7 @@ class See2SoundApiService {
 
   Future<http.Response> _get(String path) async {
     try {
-      final response = await _client
-          .get(_uriBuilder(path))
-          .timeout(requestTimeout);
+      final response = await _client.get(_uri(path)).timeout(requestTimeout);
       _ensureSuccess(response);
       return response;
     } on ApiException {
@@ -255,23 +319,8 @@ class See2SoundApiService {
   }) {
     if (expectedStatuses.contains(response.statusCode)) return;
 
-    String? detail;
-    try {
-      final decoded = jsonDecode(utf8.decode(response.bodyBytes));
-      if (decoded is Map) {
-        final rawDetail = decoded['detail'];
-        if (rawDetail is String) {
-          detail = rawDetail;
-        } else if (rawDetail != null) {
-          detail = rawDetail.toString();
-        }
-      }
-    } on FormatException {
-      // A mensagem amigável por status abaixo continua sendo utilizada.
-    }
-
     throw ApiException(
-      detail ?? _messageForStatus(response.statusCode),
+      _messageForStatus(response.statusCode),
       statusCode: response.statusCode,
     );
   }
@@ -283,6 +332,8 @@ class See2SoundApiService {
       409 => 'A geração ainda não terminou.',
       413 => 'O vídeo excede o tamanho permitido.',
       415 => 'Formato de vídeo não suportado.',
+      422 =>
+        'Não foi possível validar o vídeo. Verifique o arquivo e tente novamente.',
       >= 500 => 'O servidor não conseguiu concluir a solicitação.',
       _ => 'Não foi possível concluir a solicitação.',
     };
