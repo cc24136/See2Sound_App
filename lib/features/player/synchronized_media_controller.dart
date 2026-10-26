@@ -75,7 +75,8 @@ class SynchronizedMediaController extends ChangeNotifier {
     MediaInitializationStage.failed =>
       _errorMessage ?? 'Não foi possível preparar a reprodução.',
   };
-  bool get _aborted => _disposed || _initializationFailed;
+  bool get _aborted =>
+      _disposed || _initializationFailed || _errorMessage != null;
 
   Future<void> initialize() => _initialization ??= _initializeBounded();
 
@@ -133,6 +134,12 @@ class SynchronizedMediaController extends ChangeNotifier {
     if (_aborted) return;
     await videoController.initialize().timeout(loadTimeout);
     if (_aborted) return;
+    if (!videoController.value.isInitialized ||
+        videoController.value.duration <= Duration.zero) {
+      throw const PlaybackFileException(
+        'Não foi possível ler a duração do vídeo. Verifique o arquivo ou tente abri-lo novamente.',
+      );
+    }
     await videoController.setVolume(0).timeout(loadTimeout);
     if (_aborted) return;
 
@@ -190,6 +197,7 @@ class SynchronizedMediaController extends ChangeNotifier {
     if (_disposed || _errorMessage != null) return;
     _errorMessage =
         'Não foi possível continuar a reprodução da audiodescrição. Tente abrir o vídeo novamente.';
+    _initialized = false;
     _driftTimer?.cancel();
     _notify();
     await Future.wait([
@@ -205,7 +213,7 @@ class SynchronizedMediaController extends ChangeNotifier {
   Future<void> seekTo(Duration position) => _run(() => _seekTo(position));
 
   Future<void> _play() async {
-    if (_disposed) return;
+    if (_aborted) return;
     final currentPosition = videoController.value.position;
     final videoDuration = videoController.value.duration;
     if (videoController.value.isCompleted ||
@@ -214,9 +222,9 @@ class SynchronizedMediaController extends ChangeNotifier {
     } else {
       await audioPlayer.seek(currentPosition);
     }
-    if (_disposed || _errorMessage != null) return;
+    if (_aborted) return;
     await videoController.play();
-    if (_disposed || _errorMessage != null) return;
+    if (_aborted) return;
     // just_audio.play completes on pause/end, so it must not block the command queue.
     unawaited(
       audioPlayer.play().catchError(
@@ -228,18 +236,18 @@ class SynchronizedMediaController extends ChangeNotifier {
   }
 
   Future<void> _pause() async {
-    if (_disposed) return;
+    if (_aborted) return;
     await videoController.pause();
-    if (_disposed) return;
+    if (_aborted) return;
     await audioPlayer.pause();
     _notify();
   }
 
   Future<void> _seekTo(Duration requestedPosition) async {
-    if (_disposed) return;
+    if (_aborted) return;
     final boundedPosition = _boundedPosition(requestedPosition);
     await videoController.seekTo(boundedPosition);
-    if (_disposed) return;
+    if (_aborted) return;
     await audioPlayer.seek(boundedPosition);
     _notify();
   }
@@ -349,6 +357,12 @@ class SynchronizedMediaController extends ChangeNotifier {
 
   void _notify() {
     if (!_disposed) notifyListeners();
+  }
+
+  /// Detaches synchronously and lets replacements await native resource cleanup.
+  Future<void> close() {
+    dispose();
+    return _releaseMedia();
   }
 
   @override

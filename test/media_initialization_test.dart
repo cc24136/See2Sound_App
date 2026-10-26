@@ -172,20 +172,35 @@ void main() {
     controller.dispose();
     await audio.dispose();
   });
+
+  test('duração inválida não habilita reprodução nem carrega áudio', () async {
+    final video = _TestVideo()..initialDuration = Duration.zero;
+    final audio = _TestAudio();
+    final controller = makeController(video, audio);
+    await expectLater(
+      controller.initialize(),
+      throwsA(isA<PlaybackFileException>()),
+    );
+    expect(audio.loadEntered.isCompleted, isFalse);
+    expect(controller.isInitialized, isFalse);
+    await controller.close();
+    await audio.dispose();
+  });
 }
 
 // Test doubles exist only in this test file. Production always uses native plugins.
 class _TestVideo extends VideoPlayerController {
   _TestVideo() : super.asset('test-only');
   Completer<void>? pendingInitialization;
+  Duration initialDuration = const Duration(seconds: 15);
   int disposals = 0;
   @override
   Future<void> initialize() async {
     if (pendingInitialization != null) await pendingInitialization!.future;
     if (disposals > 0) return;
-    value = const VideoPlayerValue(
-      duration: Duration(seconds: 15),
-      size: Size(1920, 1080),
+    value = VideoPlayerValue(
+      duration: initialDuration,
+      size: const Size(1920, 1080),
       isInitialized: true,
     );
   }

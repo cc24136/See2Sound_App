@@ -264,3 +264,5 @@ Developed as part of the **See2Sound Project**.
 
 
 A correção de inicialização e caminhos Unicode do player Windows está descrita em [WINDOWS_PLAYER_FIX.md](docs/WINDOWS_PLAYER_FIX.md), com reprodução do defeito, testes reais e roteiro manual.
+
+A correção de descarte de texturas e reprodução de MP4 fragmentado no Windows está descrita em [WINDOWS_PLAYER_LIFECYCLE_FIX.md](docs/WINDOWS_PLAYER_LIFECYCLE_FIX.md), com testes nativos de abertura repetida, cancelamento e formatos UHD/retrato.

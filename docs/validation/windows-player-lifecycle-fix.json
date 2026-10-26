@@ -1,0 +1,72 @@
+{
+  "date": "2026-10-26",
+  "flutter_analyze": "passed",
+  "flutter_test": {
+    "passed": 84,
+    "skipped_backend_opt_in": 3
+  },
+  "native_lifecycle": {
+    "passed": 4,
+    "reopen_cycles": 20,
+    "cancel_during_initialization_cycles": 5,
+    "extra_resolutions": [
+      "3840x2160",
+      "2160x3840"
+    ]
+  },
+  "native_controls": {
+    "passed": 3,
+    "real_plugins": true,
+    "original_video_volume": 0,
+    "speed": 1.25,
+    "audio_volume": 0.4,
+    "drift_correction": "passed"
+  },
+  "flutter_build_windows": "passed",
+  "backend_modified": false,
+  "single_windows_video_plugin": true,
+  "single_windows_audio_plugin": true,
+  "fixtures": [
+    {
+      "name": "horizontal.mp4",
+      "bytes": 15152550,
+      "sha256": "aaef906797b9f1ff290cc3d3c87d4e24812011f8f561a714aa1f86b67e6c6686"
+    },
+    {
+      "name": "mixed.wav",
+      "bytes": 1693484,
+      "sha256": "5e83fdab665c50eb6eb6f3a9ab4d3f8c1e353c3fb7e824826c50a5fb0fb91264",
+      "duration_seconds": 19.2,
+      "sample_rate": 44100,
+      "channels": 1
+    },
+    {
+      "name": "uhd.mp4",
+      "bytes": 9134072,
+      "sha256": "74781ac554cfd0726f2d91327ae01417b2e0f7fd072d6ba567552f86513ec319"
+    },
+    {
+      "name": "portrait.mp4",
+      "bytes": 64157980,
+      "sha256": "ae286c6654f33d7a54f07ea495a28cd430964bb6df490e52fd82b9e5777e7129"
+    },
+    {
+      "name": "vídeo original.mp4",
+      "bytes": 8719257,
+      "sha256": "62e7cb8337d84c18f46dc216b4e1c47ebb53b1676f51c2c3dc10c3380f91d15b"
+    },
+    {
+      "name": "descrição final #100%.wav",
+      "bytes": 2600180,
+      "sha256": "74c849ed21b406fc1c2064c5e19b271247d0d406df994ddfd8cd1c97bd65eed6",
+      "duration_seconds": 14.74,
+      "sample_rate": 44100,
+      "channels": 2
+    }
+  ],
+  "limitations": [
+    "finite stress test, not a proof for every driver/hours of use",
+    "manual listening and screen-reader validation pending",
+    "fragment-duration fallback does not handle complex edit lists"
+  ]
+}

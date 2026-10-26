@@ -45,18 +45,23 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
     _createController();
   }
 
-  void _createController() {
+  void _createController({Future<void>? previousRelease}) {
     _initializationError = null;
     _pendingSeek = null;
     _controller = SynchronizedMediaController(
       videoPath: widget.videoPath,
       audioPath: widget.audioPath,
     )..addListener(_refresh);
-    unawaited(_initialize(_controller));
+    unawaited(_initialize(_controller, previousRelease: previousRelease));
   }
 
-  Future<void> _initialize(SynchronizedMediaController controller) async {
+  Future<void> _initialize(
+    SynchronizedMediaController controller, {
+    Future<void>? previousRelease,
+  }) async {
     try {
+      await previousRelease;
+      if (!mounted || !identical(controller, _controller)) return;
       await controller.initialize();
     } on Object catch (error, stackTrace) {
       debugPrint('[See2Sound] Erro ao inicializar player: $error');
@@ -68,10 +73,9 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
   }
 
   void _replaceController() {
-    _controller
-      ..removeListener(_refresh)
-      ..dispose();
-    _createController();
+    _controller.removeListener(_refresh);
+    final previousRelease = _controller.close();
+    _createController(previousRelease: previousRelease);
   }
 
   @override
