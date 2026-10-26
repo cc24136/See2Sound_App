@@ -259,6 +259,28 @@ class LibraryService extends ChangeNotifier {
   Future<void> deleteAudioFileAndRemove(AudioDescriptionLibraryItem item) =>
       _mutate(() => _deleteAudioFileAndRemove(item));
 
+  /// Processes a snapshot of IDs inside the mutation queue. Failed items remain
+  /// in the library; one inaccessible file does not prevent deleting the others.
+  Future<Map<String, LibraryException>> deleteAudioFilesAndRemove(
+    Iterable<String> ids,
+  ) {
+    final selectedIds = ids.toSet();
+    return _mutate(() async {
+      await _ensureInitialized();
+      final failures = <String, LibraryException>{};
+      for (final id in selectedIds) {
+        final matches = _items.where((item) => item.id == id);
+        if (matches.isEmpty) continue;
+        try {
+          await _deleteAudioFileAndRemove(matches.single);
+        } on LibraryException catch (error) {
+          failures[id] = error;
+        }
+      }
+      return failures;
+    });
+  }
+
   Future<void> _deleteAudioFileAndRemove(
     AudioDescriptionLibraryItem item,
   ) async {

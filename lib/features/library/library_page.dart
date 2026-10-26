@@ -39,6 +39,9 @@ class LibraryPage extends StatefulWidget {
 class _LibraryPageState extends State<LibraryPage> {
   final _searchController = TextEditingController();
   _LibrarySort _sort = _LibrarySort.newest;
+  final _selectedIds = <String>{};
+  bool _selecting = false;
+  bool _deleting = false;
 
   @override
   void initState() {
@@ -52,11 +55,116 @@ class _LibraryPageState extends State<LibraryPage> {
     if (oldWidget.libraryService != widget.libraryService) {
       oldWidget.libraryService.removeListener(_refresh);
       widget.libraryService.addListener(_refresh);
+      _selectedIds.clear();
+      _selecting = false;
     }
   }
 
   void _refresh() {
-    if (mounted) setState(() {});
+    if (mounted) {
+      setState(() {
+        _selectedIds.retainAll(
+          widget.libraryService.items.map((item) => item.id),
+        );
+      });
+    }
+  }
+
+  Future<void> _deleteSelected() async {
+    if (_deleting || _selectedIds.isEmpty) return;
+    final ids = _selectedIds.toSet();
+    setState(() => _deleting = true);
+    try {
+      final confirmed = await _confirm(
+        title: 'Excluir ${ids.length} audiodescrições?',
+        message:
+            'Os arquivos de áudio selecionados serão excluídos do dispositivo e removidos da biblioteca. Essa ação não poderá ser desfeita. Os vídeos originais serão mantidos.',
+        confirmLabel: 'Excluir',
+        destructive: true,
+      );
+      if (!confirmed || !mounted) return;
+      final failures = await widget.libraryService.deleteAudioFilesAndRemove(
+        ids,
+      );
+      if (!mounted) return;
+      setState(() {
+        _selectedIds
+          ..clear()
+          ..addAll(failures.keys);
+        _selecting = failures.isNotEmpty;
+      });
+      final deleted = ids.length - failures.length;
+      _showMessage(
+        failures.isEmpty
+            ? '$deleted audiodescrições excluídas.'
+            : '$deleted excluídas; ${failures.length} não puderam ser excluídas e continuam selecionadas. ${failures.values.first.message}',
+      );
+    } catch (error, stackTrace) {
+      debugPrint('[See2Sound] Erro ao excluir seleção: $error\n$stackTrace');
+      _showMessage('Não foi possível concluir a exclusão. Tente novamente.');
+    } finally {
+      if (mounted) setState(() => _deleting = false);
+    }
+  }
+
+  Widget _selectionToolbar(List<AudioDescriptionLibraryItem> visibleItems) {
+    final allVisibleSelected =
+        visibleItems.isNotEmpty &&
+        visibleItems.every((item) => _selectedIds.contains(item.id));
+    return Wrap(
+      spacing: AppSpacing.sm,
+      runSpacing: AppSpacing.sm,
+      crossAxisAlignment: WrapCrossAlignment.center,
+      children: [
+        if (!_selecting)
+          OutlinedButton.icon(
+            onPressed: () => setState(() => _selecting = true),
+            icon: const Icon(Icons.checklist),
+            label: const Text('Selecionar audiodescrições'),
+          )
+        else ...[
+          Semantics(
+            liveRegion: true,
+            child: Text('${_selectedIds.length} selecionadas'),
+          ),
+          TextButton(
+            onPressed: _deleting || visibleItems.isEmpty
+                ? null
+                : () {
+                    setState(() {
+                      final ids = visibleItems.map((item) => item.id);
+                      if (allVisibleSelected) {
+                        _selectedIds.removeAll(ids);
+                      } else {
+                        _selectedIds.addAll(ids);
+                      }
+                    });
+                  },
+            child: Text(
+              allVisibleSelected
+                  ? 'Desmarcar visíveis'
+                  : 'Selecionar todas as visíveis',
+            ),
+          ),
+          FilledButton.icon(
+            onPressed: _deleting || _selectedIds.isEmpty
+                ? null
+                : _deleteSelected,
+            icon: const Icon(Icons.delete_outline),
+            label: Text(_deleting ? 'Excluindo...' : 'Excluir selecionadas'),
+          ),
+          TextButton(
+            onPressed: _deleting
+                ? null
+                : () => setState(() {
+                    _selectedIds.clear();
+                    _selecting = false;
+                  }),
+            child: const Text('Cancelar seleção'),
+          ),
+        ],
+      ],
+    );
   }
 
   @override
@@ -445,6 +553,10 @@ class _LibraryPageState extends State<LibraryPage> {
                   onSortChanged: (value) => setState(() => _sort = value),
                 ),
                 const SizedBox(height: AppSpacing.md),
+                if (widget.libraryService.items.isNotEmpty || _selecting) ...[
+                  _selectionToolbar(items),
+                  const SizedBox(height: AppSpacing.md),
+                ],
                 AppCard(
                   highContrast: widget.highContrast,
                   simplified: widget.simplifiedInterface,
@@ -468,8 +580,9 @@ class _LibraryPageState extends State<LibraryPage> {
                         )
                       : Column(
                           children: [
-                            if (constraints.maxWidth >=
-                                AppBreakpoints.compact) ...[
+                            if (!_selecting &&
+                                constraints.maxWidth >=
+                                    AppBreakpoints.compact) ...[
                               _ListHeader(highContrast: widget.highContrast),
                               const SizedBox(height: 12),
                             ],
@@ -478,20 +591,43 @@ class _LibraryPageState extends State<LibraryPage> {
                               index < items.length;
                               index++
                             ) ...[
-                              _AudioDescriptionTile(
-                                order: 4 + index.toDouble(),
-                                item: items[index],
-                                highContrast: widget.highContrast,
-                                visualFocus: widget.visualFocus,
-                                compact:
-                                    constraints.maxWidth <
-                                    AppBreakpoints.compact,
-                                reduceMotion: widget.reduceMotion,
-                                onPrimaryAction: () => _play(items[index]),
-                                onMenuAction: (action) => unawaited(
-                                  _handleMenuAction(action, items[index]),
+                              if (_selecting)
+                                CheckboxListTile(
+                                  key: ValueKey(items[index].id),
+                                  value: _selectedIds.contains(items[index].id),
+                                  controlAffinity:
+                                      ListTileControlAffinity.leading,
+                                  title: Text(items[index].originalFilename),
+                                  subtitle: Text(
+                                    'Audiodescrição • ${_formatDate(items[index].createdAt)}',
+                                  ),
+                                  onChanged: _deleting
+                                      ? null
+                                      : (selected) => setState(() {
+                                          if (selected == true) {
+                                            _selectedIds.add(items[index].id);
+                                          } else {
+                                            _selectedIds.remove(
+                                              items[index].id,
+                                            );
+                                          }
+                                        }),
+                                )
+                              else
+                                _AudioDescriptionTile(
+                                  order: 4 + index.toDouble(),
+                                  item: items[index],
+                                  highContrast: widget.highContrast,
+                                  visualFocus: widget.visualFocus,
+                                  compact:
+                                      constraints.maxWidth <
+                                      AppBreakpoints.compact,
+                                  reduceMotion: widget.reduceMotion,
+                                  onPrimaryAction: () => _play(items[index]),
+                                  onMenuAction: (action) => unawaited(
+                                    _handleMenuAction(action, items[index]),
+                                  ),
                                 ),
-                              ),
                               if (index != items.length - 1)
                                 const SizedBox(height: 12),
                             ],
