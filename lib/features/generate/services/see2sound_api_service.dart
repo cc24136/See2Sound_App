@@ -248,6 +248,185 @@ class See2SoundApiService {
     }
   }
 
+    /// Baixa o MP4 com pausas estendidas.
+  ///
+  /// O download é realizado por streaming,
+  /// evitando carregar todo o vídeo na memória.
+  Future<String> downloadVideoWithPauses(
+    String jobId, {
+    required String destinationDirectoryPath,
+    required String originalFilename,
+  }) async {
+    File? partialFile;
+
+    try {
+      final response = await _client
+          .send(
+            http.Request(
+              'GET',
+              _uri(
+                '/api/v1/generations/'
+                '$jobId/artifacts/video_with_pauses',
+              ),
+            ),
+          )
+          .timeout(requestTimeout);
+
+      if (response.statusCode != 200) {
+        _ensureSuccess(
+          await http.Response.fromStream(
+            response,
+          ).timeout(requestTimeout),
+        );
+      }
+
+      final type = response
+          .headers['content-type']
+          ?.toLowerCase();
+
+      if (type != null &&
+          !type.startsWith('video/') &&
+          !type.startsWith('application/octet-stream')) {
+        throw const FormatException(
+          'O servidor não enviou um MP4.',
+        );
+      }
+
+      final directory = Directory(
+        destinationDirectoryPath,
+      );
+
+      if (!await directory.exists()) {
+        throw const ApiException(
+          'A pasta de armazenamento não foi encontrada.',
+        );
+      }
+
+      final base =
+          '${_safeFileStem(originalFilename)}_com_pausas';
+
+      var target = File(
+        '${directory.path}'
+        '${Platform.pathSeparator}'
+        '$base.mp4',
+      );
+
+      var suffix = 2;
+
+      while (await target.exists() ||
+          await File('${target.path}.part').exists()) {
+        target = File(
+          '${directory.path}'
+          '${Platform.pathSeparator}'
+          '${base}_$suffix.mp4',
+        );
+
+        suffix++;
+      }
+
+      partialFile = File(
+        '${target.path}.part',
+      );
+
+      final sink = partialFile.openWrite();
+
+      final header = <int>[];
+
+      var received = 0;
+
+      final watch = Stopwatch()..start();
+
+      var completed = false;
+
+      try {
+        await sink.addStream(
+          response.stream
+              .timeout(requestTimeout)
+              .map((chunk) {
+                if (watch.elapsed > uploadTimeout) {
+                  throw TimeoutException(
+                    'Download do vídeo excedeu o limite.',
+                  );
+                }
+
+                if (header.length < 12) {
+                  header.addAll(
+                    chunk.take(
+                      12 - header.length,
+                    ),
+                  );
+                }
+
+                received += chunk.length;
+
+                return chunk;
+              }),
+        );
+
+        await sink.flush();
+
+        completed = true;
+      } finally {
+        try {
+          await sink.close();
+        } catch (_) {
+          if (completed) rethrow;
+        }
+      }
+
+      // Validação simples da assinatura MP4:
+      // bytes 4 a 7 devem conter "ftyp".
+
+      if (header.length < 12 ||
+          header[4] != 0x66 ||
+          header[5] != 0x74 ||
+          header[6] != 0x79 ||
+          header[7] != 0x70) {
+        throw const FormatException(
+          'Cabeçalho MP4 inválido.',
+        );
+      }
+
+      if (received == 0 ||
+          (response.contentLength != null &&
+              received != response.contentLength)) {
+        throw const FormatException(
+          'Download do MP4 incompleto.',
+        );
+      }
+
+      await partialFile.rename(
+        target.path,
+      );
+
+      partialFile = null;
+
+      return target.path;
+    } on ApiException {
+      rethrow;
+    } catch (error, stackTrace) {
+      debugPrint(
+        '[See2Sound] Download do vídeo '
+        'com pausas falhou: $error',
+      );
+
+      debugPrint('$stackTrace');
+
+      throw ApiException(
+        'Não foi possível salvar o vídeo com pausas.',
+        cause: error,
+      );
+    } finally {
+      if (partialFile != null) {
+        try {
+          if (await partialFile.exists()) {
+            await partialFile.delete();
+          }
+        } catch (_) {}
+      }
+    }
+  }
+
   bool _hasWavHeader(List<int> bytes) {
     if (bytes.length < 12) return false;
     return bytes[0] == 0x52 &&

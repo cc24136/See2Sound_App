@@ -155,12 +155,22 @@ class _GeneratePageState extends State<GeneratePage> {
 
   Future<void> _openPlayer() async {
     if (_openingPlayer || !mounted) return;
+
     _openingPlayer = true;
+
     try {
-      final videoPath = _controller.videoPath;
+      // Utiliza o vídeo com pausas quando existir.
+      // Caso contrário, utiliza o vídeo original.
+      final videoPath = _controller.playbackVideoPath;
+
       final audioPath = _controller.audioPath;
       final filename = _controller.filename;
-      if (videoPath == null || audioPath == null || filename == null) return;
+
+      if (videoPath == null ||
+          audioPath == null ||
+          filename == null) {
+        return;
+      }
 
       await Navigator.of(context).push<void>(
         MaterialPageRoute(
@@ -181,11 +191,16 @@ class _GeneratePageState extends State<GeneratePage> {
         ),
       );
     } catch (error, stackTrace) {
-      debugPrint('[See2Sound] Não foi possível abrir reprodução: $error');
+      debugPrint(
+        '[See2Sound] Não foi possível abrir reprodução: $error',
+      );
+
       debugPrint('$stackTrace');
+
       if (mounted) {
         _showMessage(
-          'Não foi possível abrir a reprodução. Verifique os arquivos e tente novamente.',
+          'Não foi possível abrir a reprodução. '
+          'Verifique os arquivos e tente novamente.',
         );
       }
     } finally {

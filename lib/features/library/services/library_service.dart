@@ -142,11 +142,13 @@ class LibraryService extends ChangeNotifier {
   Future<AudioDescriptionLibraryItem> updateItemPaths(
     AudioDescriptionLibraryItem item, {
     String? originalVideoPath,
+    String? playbackVideoPath,
     String? audioDescriptionPath,
   }) => _mutate(
     () => _updateItemPaths(
       item,
       originalVideoPath: originalVideoPath,
+      playbackVideoPath: playbackVideoPath,
       audioDescriptionPath: audioDescriptionPath,
     ),
   );
@@ -154,14 +156,19 @@ class LibraryService extends ChangeNotifier {
   Future<AudioDescriptionLibraryItem> _updateItemPaths(
     AudioDescriptionLibraryItem item, {
     String? originalVideoPath,
+    String? playbackVideoPath,
     String? audioDescriptionPath,
   }) async {
     await _ensureInitialized();
+
     final updated = item.copyWith(
       originalVideoPath: originalVideoPath,
+      playbackVideoPath: playbackVideoPath,
       audioDescriptionPath: audioDescriptionPath,
     );
+
     await _replaceItem(updated);
+
     return updated;
   }
 

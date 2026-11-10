@@ -55,6 +55,8 @@ class GenerationController extends ChangeNotifier {
   String? _videoPath;
   String? _filename;
   String? _audioPath;
+  String? _playbackVideoPath;
+  String? _pendingVideoPath;
   String? _jobId;
   String? _errorMessage;
   String? _connectionMessage;
@@ -70,6 +72,8 @@ class GenerationController extends ChangeNotifier {
 
   GenerationUiState get state => _state;
   String? get videoPath => _videoPath;
+  String? get playbackVideoPath =>
+      _playbackVideoPath ?? _videoPath;
   String? get filename => _filename;
   String? get audioPath => _audioPath;
   String? get jobId => _jobId;
@@ -138,6 +142,8 @@ class GenerationController extends ChangeNotifier {
     _filename = filename;
     _videoDuration = videoDuration;
     _audioPath = null;
+    _playbackVideoPath = null;
+    _pendingVideoPath = null;
     _jobId = null;
     _metadata = null;
     _created = null;
@@ -306,71 +312,169 @@ class GenerationController extends ChangeNotifier {
     _pollTimer = Timer(pollInterval, () => _poll(operationId));
   }
 
-  Future<void> _completeGeneration(String jobId, int operationId) async {
-    _setState(GenerationUiState.downloadingAudio);
+  Future<void> _completeGeneration(
+    String jobId,
+    int operationId,
+  ) async {
+    _setState(
+      GenerationUiState.downloadingAudio,
+    );
 
     try {
-      _result = await _apiService.getGenerationResult(jobId);
+      _result = await _apiService.getGenerationResult(
+        jobId,
+      );
+
       if (!_isCurrent(operationId)) return;
+
       if (_result!.narrativeDescriptionCount == 0) {
         _metadata = null;
-        _setState(GenerationUiState.completedWithoutDescriptions);
-        return;
-      }
-      if (!_result!.hasVoiceEngine || !_result!.hasAudioDescription) {
-        _metadata = null;
-        _setState(GenerationUiState.completedWithoutAudio);
+
+        _setState(
+          GenerationUiState.completedWithoutDescriptions,
+        );
+
         return;
       }
 
+      if (!_result!.hasVoiceEngine ||
+          !_result!.hasAudioDescription) {
+        _metadata = null;
+
+        _setState(
+          GenerationUiState.completedWithoutAudio,
+        );
+
+        return;
+      }
+
+      // Recupera os metadados da audiodescrição.
       try {
-        _metadata = await _apiService.getAudioDescriptionMetadata(jobId);
+        _metadata = await _apiService
+            .getAudioDescriptionMetadata(jobId);
       } catch (error, stackTrace) {
-        debugPrint('[See2Sound] Metadata indisponível: $error');
+        debugPrint(
+          '[See2Sound] Metadata indisponível: $error',
+        );
+
         debugPrint('$stackTrace');
+
         _metadata = null;
       }
+
       if (!_isCurrent(operationId)) return;
 
       final filename = _filename;
       final videoPath = _videoPath;
-      final destinationDirectoryPath = _destinationDirectoryPath;
+      final destinationDirectoryPath =
+          _destinationDirectoryPath;
+
       if (filename == null ||
           videoPath == null ||
           destinationDirectoryPath == null) {
-        _fail('Não foi possível identificar os arquivos desta geração.');
+        _fail(
+          'Não foi possível identificar os arquivos desta geração.',
+        );
+
         return;
       }
 
+      // ============================================
+      // 1. Download do WAV
+      // ============================================
+
       final pendingPath = _pendingAudioPath;
+
       final downloadedAudioPath =
-          pendingPath != null && await File(pendingPath).exists()
+          pendingPath != null &&
+              await File(pendingPath).exists()
           ? pendingPath
           : await _apiService.downloadAudioDescription(
               jobId,
-              destinationDirectoryPath: destinationDirectoryPath,
+              destinationDirectoryPath:
+                  destinationDirectoryPath,
               originalFilename: filename,
             );
+
       if (!_isCurrent(operationId)) return;
+
       _pendingAudioPath = downloadedAudioPath;
+
+      // ============================================
+      // 2. Verifica se o backend criou um
+      //    vídeo com pausas estendidas
+      // ============================================
+
+      String? extendedVideoPath;
+
+      if (_result!.artifactUrls.containsKey(
+        'video_with_pauses',
+      )) {
+        final savedVideo = _pendingVideoPath;
+
+        extendedVideoPath =
+            savedVideo != null &&
+                await File(savedVideo).exists()
+            ? savedVideo
+            : await _apiService.downloadVideoWithPauses(
+                jobId,
+                destinationDirectoryPath:
+                    destinationDirectoryPath,
+                originalFilename: filename,
+              );
+
+        if (!_isCurrent(operationId)) return;
+
+        _pendingVideoPath = extendedVideoPath;
+      }
+
+      // ============================================
+      // 3. Salva na biblioteca
+      // ============================================
 
       await _libraryService.addItem(
         AudioDescriptionLibraryItem(
           id: jobId,
           originalFilename: filename,
+
+          // Mantém o vídeo original cadastrado.
           originalVideoPath: videoPath,
+
+          // Se houver pausas estendidas,
+          // armazena o MP4 adicional.
+          playbackVideoPath: extendedVideoPath,
+
           audioDescriptionPath: downloadedAudioPath,
           createdAt: DateTime.now(),
-          duration: _videoDuration,
+
+          // Usa a nova duração quando houver
+          // tempo extra de congelamento.
+          duration:
+              _result?.playbackDuration ??
+              _videoDuration,
+
           jobId: jobId,
         ),
       );
+
       if (!_isCurrent(operationId)) return;
 
+      // ============================================
+      // 4. Atualiza o estado do controlador
+      // ============================================
+
       _audioPath = downloadedAudioPath;
+
+      _playbackVideoPath = extendedVideoPath;
+
+      _pendingVideoPath = null;
       _pendingAudioPath = null;
+
       _retryCurrentJob = false;
-      _setState(GenerationUiState.ready);
+
+      _setState(
+        GenerationUiState.ready,
+      );
     } on LibraryException catch (error) {
       if (_isCurrent(operationId)) {
         _retryCurrentJob = true;
@@ -378,26 +482,39 @@ class GenerationController extends ChangeNotifier {
       }
     } on ApiException catch (error) {
       if (_isCurrent(operationId)) {
-        if (error.statusCode == 404 && _jobCompleted) {
-          _setState(GenerationUiState.completedWithoutAudio);
+        if (error.statusCode == 404 &&
+            _jobCompleted) {
+          _setState(
+            GenerationUiState.completedWithoutAudio,
+          );
         } else {
           _retryCurrentJob =
               error.statusCode == null ||
               error.statusCode == 409 ||
-              (error.statusCode != null && error.statusCode! >= 500);
+              (error.statusCode != null &&
+                  error.statusCode! >= 500);
+
           _fail(
             error.statusCode == 409
-                ? 'O resultado ainda não está disponível. Tente novamente em instantes.'
+                ? 'O resultado ainda não está disponível. '
+                  'Tente novamente em instantes.'
                 : _friendlyMessage(error),
           );
         }
       }
     } on Object catch (error, stackTrace) {
-      debugPrint('[See2Sound] Erro ao finalizar geração: $error');
+      debugPrint(
+        '[See2Sound] Erro ao finalizar geração: $error',
+      );
+
       debugPrint('$stackTrace');
+
       if (_isCurrent(operationId)) {
         _retryCurrentJob = true;
-        _fail('Não foi possível baixar a audiodescrição.');
+
+        _fail(
+          'Não foi possível baixar a audiodescrição.',
+        );
       }
     }
   }

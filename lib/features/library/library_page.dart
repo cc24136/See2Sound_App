@@ -200,21 +200,51 @@ class _LibraryPageState extends State<LibraryPage> {
 
   bool _openingPlayer = false;
 
-  Future<void> _play(AudioDescriptionLibraryItem item) async {
+  Future<void> _play(
+    AudioDescriptionLibraryItem item,
+  ) async {
     if (_openingPlayer || !mounted) return;
+
     _openingPlayer = true;
+
     try {
       var playableItem = item;
-      if (!await File(playableItem.originalVideoPath).exists()) {
-        final recovered = await _recoverMissingFile(playableItem, video: true);
+
+      // Prioriza o vídeo com pausas estendidas.
+      // Caso ele não exista, utiliza o original.
+      var videoPath =
+          playableItem.playbackVideoPath ??
+          playableItem.originalVideoPath;
+
+      if (!await File(videoPath).exists()) {
+        final recovered = await _recoverMissingFile(
+          playableItem,
+          video: true,
+        );
+
         if (recovered == null) return;
+
+        playableItem = recovered;
+
+        videoPath =
+            playableItem.playbackVideoPath ??
+            playableItem.originalVideoPath;
+      }
+
+      // Verifica a existência do WAV sincronizado.
+      if (!await File(
+        playableItem.audioDescriptionPath,
+      ).exists()) {
+        final recovered = await _recoverMissingFile(
+          playableItem,
+          video: false,
+        );
+
+        if (recovered == null) return;
+
         playableItem = recovered;
       }
-      if (!await File(playableItem.audioDescriptionPath).exists()) {
-        final recovered = await _recoverMissingFile(playableItem, video: false);
-        if (recovered == null) return;
-        playableItem = recovered;
-      }
+
       if (!mounted) return;
 
       await Navigator.of(context).push<void>(
@@ -224,23 +254,37 @@ class _LibraryPageState extends State<LibraryPage> {
             child: InheritedTheme.captureAll(
               context,
               PlayerPage(
-                videoPath: playableItem.originalVideoPath,
-                audioPath: playableItem.audioDescriptionPath,
-                filename: playableItem.originalFilename,
+                videoPath:
+                    playableItem.playbackVideoPath ??
+                    playableItem.originalVideoPath,
+
+                audioPath:
+                    playableItem.audioDescriptionPath,
+
+                filename:
+                    playableItem.originalFilename,
+
                 highContrast: widget.highContrast,
                 visualFocus: widget.visualFocus,
-                backTooltip: 'Voltar para Suas audiodescrições',
+
+                backTooltip:
+                    'Voltar para Suas audiodescrições',
               ),
             ),
           ),
         ),
       );
     } catch (error, stackTrace) {
-      debugPrint('[See2Sound] Não foi possível abrir reprodução: $error');
+      debugPrint(
+        '[See2Sound] Não foi possível abrir reprodução: $error',
+      );
+
       debugPrint('$stackTrace');
+
       if (mounted) {
         _showMessage(
-          'Não foi possível abrir a reprodução. Verifique os arquivos e tente novamente.',
+          'Não foi possível abrir a reprodução. '
+          'Verifique os arquivos e tente novamente.',
         );
       }
     } finally {
@@ -253,30 +297,52 @@ class _LibraryPageState extends State<LibraryPage> {
     required bool video,
   }) async {
     if (!mounted) return null;
+
+    final isExtendedVideo =
+        video && item.playbackVideoPath != null;
+
     final locate =
         await showDialog<bool>(
           context: context,
           builder: (dialogContext) => AlertDialog(
             icon: Icon(
-              video ? Icons.movie_outlined : Icons.audio_file_outlined,
+              video
+                  ? Icons.movie_outlined
+                  : Icons.audio_file_outlined,
             ),
             title: Text(
               video
-                  ? 'O vídeo original não foi encontrado'
+                  ? (
+                      isExtendedVideo
+                          ? 'O vídeo com pausas não foi encontrado'
+                          : 'O vídeo original não foi encontrado'
+                    )
                   : 'A audiodescrição não foi encontrada',
             ),
             content: Text(
               video
-                  ? 'O vídeo pode ter sido movido ou renomeado. Deseja localizá-lo novamente?'
-                  : 'O arquivo WAV pode ter sido movido ou renomeado. Deseja localizá-lo novamente?',
+                  ? (
+                      isExtendedVideo
+                          ? 'O vídeo com pausas pode ter sido '
+                            'movido ou renomeado. '
+                            'Deseja localizá-lo novamente?'
+                          : 'O vídeo pode ter sido movido '
+                            'ou renomeado. '
+                            'Deseja localizá-lo novamente?'
+                    )
+                  : 'O arquivo WAV pode ter sido movido '
+                    'ou renomeado. '
+                    'Deseja localizá-lo novamente?',
             ),
             actions: [
               TextButton(
-                onPressed: () => Navigator.of(dialogContext).pop(false),
+                onPressed: () =>
+                    Navigator.of(dialogContext).pop(false),
                 child: const Text('Agora não'),
               ),
               FilledButton.icon(
-                onPressed: () => Navigator.of(dialogContext).pop(true),
+                onPressed: () =>
+                    Navigator.of(dialogContext).pop(true),
                 icon: const Icon(Icons.search),
                 label: const Text('Localizar arquivo'),
               ),
@@ -284,34 +350,82 @@ class _LibraryPageState extends State<LibraryPage> {
           ),
         ) ??
         false;
+
     if (!locate || !mounted) return null;
 
     try {
       final selected = await FilePicker.pickFile(
         dialogTitle: video
-            ? 'Localize o vídeo original'
+            ? (
+                isExtendedVideo
+                    ? 'Localize o vídeo com pausas'
+                    : 'Localize o vídeo original'
+              )
             : 'Localize a audiodescrição WAV',
+
         type: FileType.custom,
+
         allowedExtensions: video
-            ? const ['mp4', 'mov', 'avi', 'mkv', 'webm', 'm4v']
+            ? const [
+                'mp4',
+                'mov',
+                'avi',
+                'mkv',
+                'webm',
+                'm4v',
+              ]
             : const ['wav'],
       );
+
       final path = selected?.path;
-      if (path == null || path.isEmpty) return null;
-      final updated = await widget.libraryService.updateItemPaths(
+
+      if (path == null || path.isEmpty) {
+        return null;
+      }
+
+      final updated =
+          await widget.libraryService.updateItemPaths(
         item,
-        originalVideoPath: video ? path : null,
-        audioDescriptionPath: video ? null : path,
+
+        // Atualiza o original apenas se o
+        // arquivo procurado for o original.
+        originalVideoPath:
+            video && !isExtendedVideo
+            ? path
+            : null,
+
+        // Atualiza o MP4 estendido separadamente.
+        playbackVideoPath:
+            video && isExtendedVideo
+            ? path
+            : null,
+
+        audioDescriptionPath:
+            video
+            ? null
+            : path,
       );
-      _showMessage('Localização atualizada na biblioteca.');
+
+      _showMessage(
+        'Localização atualizada na biblioteca.',
+      );
+
       return updated;
     } on LibraryException catch (error) {
       _showMessage(error.message);
+
       return null;
     } catch (error, stackTrace) {
-      debugPrint('[See2Sound] Erro ao recuperar arquivo movido: $error');
+      debugPrint(
+        '[See2Sound] Erro ao recuperar arquivo movido: $error',
+      );
+
       debugPrint('$stackTrace');
-      _showMessage('Não foi possível atualizar a localização do arquivo.');
+
+      _showMessage(
+        'Não foi possível atualizar a localização do arquivo.',
+      );
+
       return null;
     }
   }
