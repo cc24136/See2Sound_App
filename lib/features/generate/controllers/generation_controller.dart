@@ -69,6 +69,26 @@ class GenerationController extends ChangeNotifier {
   GenerationResult? _result;
   bool _retryCurrentJob = false;
   bool _jobCompleted = false;
+  double? _progressPercent;
+  String? _stage;
+  String? _stageLabel;
+  int? _stageCurrent;
+  int? _stageTotal;
+
+  double? get progressPercent => _progressPercent;
+  String? get stage => _stage;
+  String? get stageLabel => _stageLabel;
+  int? get stageCurrent => _stageCurrent;
+  int? get stageTotal => _stageTotal;
+
+  String get stageMessage =>
+      _stageLabel ??
+      switch (_stage) {
+        'spectra' => 'Analisando cenas com Spectra...',
+        'narrative' => 'Gerando audiodescrição...',
+        'tts' => 'Gerando voz...',
+        _ => 'Analisando cenas e áudio. Gerando audiodescrição...',
+      };
 
   GenerationUiState get state => _state;
   String? get videoPath => _videoPath;
@@ -99,9 +119,9 @@ class GenerationController extends ChangeNotifier {
     GenerationUiState.selecting => 'Selecionando vídeo...',
     GenerationUiState.uploading => 'Enviando vídeo...',
     GenerationUiState.queued => 'Vídeo enviado. Aguardando processamento...',
-    GenerationUiState.processing =>
-      'Analisando cenas e áudio. Gerando audiodescrição...',
-    GenerationUiState.downloadingAudio => 'Baixando áudio...',
+    GenerationUiState.processing => stageMessage,
+    GenerationUiState.downloadingAudio =>
+      'Geração concluída. Preparando e salvando os arquivos...',
     GenerationUiState.ready => 'Pronto para reprodução.',
     GenerationUiState.completedWithoutDescriptions =>
       'Processamento concluído. Nenhuma audiodescrição foi necessária para este vídeo.',
@@ -155,6 +175,11 @@ class GenerationController extends ChangeNotifier {
     _requiresStorageConfiguration = false;
     _retryCurrentJob = false;
     _jobCompleted = false;
+    _progressPercent = null;
+    _stage = null;
+    _stageLabel = null;
+    _stageCurrent = null;
+    _stageTotal = null;
     _consecutivePollErrors = 0;
     _monitoring
       ..reset()
@@ -252,6 +277,18 @@ class GenerationController extends ChangeNotifier {
       _connectionMessage = null;
       _consecutivePollErrors = 0;
 
+      final progress = GenerationSnapshot.validProgressPercent(
+        snapshot.progressPercent,
+      );
+      if (progress != null &&
+          (_progressPercent == null || progress > _progressPercent!)) {
+        _progressPercent = progress;
+      }
+      _stage = snapshot.stage;
+      _stageLabel = snapshot.stageLabel;
+      _stageCurrent = snapshot.stageCurrent;
+      _stageTotal = snapshot.stageTotal;
+
       switch (snapshot.status) {
         case GenerationStatus.queued:
           _setState(GenerationUiState.queued);
@@ -262,6 +299,7 @@ class GenerationController extends ChangeNotifier {
         case GenerationStatus.completed:
           _pollTimer?.cancel();
           _jobCompleted = true;
+          _progressPercent = 100;
           await _completeGeneration(jobId, operationId);
         case GenerationStatus.failed:
           _pollTimer?.cancel();

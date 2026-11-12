@@ -5,6 +5,48 @@ import 'package:see2sound_app/features/generate/models/generation_result.dart';
 import 'package:see2sound_app/features/generate/models/generation_status.dart';
 
 void main() {
+  test('interpreta progresso e etapa, incluindo zero e valores decimais', () {
+    for (final percent in [0, 65, 65.5, 100]) {
+      final snapshot = GenerationSnapshot.fromJson({
+        'status': 'processing',
+        'progress_percent': percent,
+        'stage': 'spectra',
+        'stage_label': 'Analisando cenas',
+        'stage_current': 2,
+        'stage_total': 8,
+      });
+      expect(snapshot.progressPercent, percent);
+      expect(snapshot.stage, 'spectra');
+      expect(snapshot.stageLabel, 'Analisando cenas');
+      expect(snapshot.stageCurrent, 2);
+      expect(snapshot.stageTotal, 8);
+    }
+  });
+
+  test('backend antigo e progresso inválido não interrompem o status', () {
+    for (final value in [
+      null,
+      -1,
+      101,
+      '65',
+      true,
+      double.nan,
+      double.infinity,
+      {},
+      [],
+    ]) {
+      final snapshot = GenerationSnapshot.fromJson({
+        'status': 'processing',
+        'progress_percent': value,
+        'stage_current': -1,
+        'stage_total': '8',
+      });
+      expect(snapshot.progressPercent, isNull);
+      expect(snapshot.stageCurrent, isNull);
+      expect(snapshot.stageTotal, isNull);
+      expect(snapshot.stageLabel, isNull);
+    }
+  });
   test('faz parse de GenerationCreated', () {
     final model = GenerationCreated.fromJson(const {
       'job_id': 'job-123',

@@ -19,7 +19,7 @@ void main() {
 
     final restored = ApiSettingsService();
     await restored.initialize();
-    expect(restored.baseUrl, 'http://192.168.1.20:8000');
+    expect(restored.baseUrl, ApiConfig.defaultBaseUrl);
   });
 
   test('rejeita endereço sem http ou https', () async {
@@ -38,4 +38,24 @@ void main() {
       '${ApiConfig.defaultBaseUrl}/health',
     );
   });
+
+  test(
+    'inicialização ignora URLs antigas em favor do dart-define ou padrão',
+    () async {
+      for (final legacy in [
+        'http://old-server.test:9999',
+        'endereço inválido',
+      ]) {
+        SharedPreferences.setMockInitialValues({
+          'see2sound.api_base_url': legacy,
+        });
+        final settings = ApiSettingsService();
+        await settings.initialize();
+        expect(settings.baseUrl, ApiConfig.defaultBaseUrl);
+        expect(settings.uri('/health'), ApiConfig.uri('/health'));
+        expect(settings.initialized, isTrue);
+        settings.dispose();
+      }
+    },
+  );
 }

@@ -166,9 +166,7 @@ class _GeneratePageState extends State<GeneratePage> {
       final audioPath = _controller.audioPath;
       final filename = _controller.filename;
 
-      if (videoPath == null ||
-          audioPath == null ||
-          filename == null) {
+      if (videoPath == null || audioPath == null || filename == null) {
         return;
       }
 
@@ -191,9 +189,7 @@ class _GeneratePageState extends State<GeneratePage> {
         ),
       );
     } catch (error, stackTrace) {
-      debugPrint(
-        '[See2Sound] Não foi possível abrir reprodução: $error',
-      );
+      debugPrint('[See2Sound] Não foi possível abrir reprodução: $error');
 
       debugPrint('$stackTrace');
 
@@ -247,7 +243,10 @@ class _GeneratePageState extends State<GeneratePage> {
                 ),
                 if (_controller.state != GenerationUiState.idle) ...[
                   const SizedBox(height: AppSpacing.lg),
-                  _GenerationStatusPanel(
+                  GenerationStatusPanel(
+                    reduceMotion:
+                        widget.reduceMotion ||
+                        MediaQuery.disableAnimationsOf(context),
                     controller: _controller,
                     highContrast: widget.highContrast,
                     visualFocus: widget.visualFocus,
@@ -301,8 +300,9 @@ class _GeneratePageState extends State<GeneratePage> {
   }
 }
 
-class _GenerationStatusPanel extends StatelessWidget {
-  const _GenerationStatusPanel({
+class GenerationStatusPanel extends StatelessWidget {
+  const GenerationStatusPanel({
+    super.key,
     required this.controller,
     required this.highContrast,
     required this.visualFocus,
@@ -311,6 +311,7 @@ class _GenerationStatusPanel extends StatelessWidget {
     required this.onOpenSettings,
     required this.onOpenLibrary,
     required this.onGenerateAnother,
+    this.reduceMotion = false,
   });
 
   final GenerationController controller;
@@ -321,6 +322,7 @@ class _GenerationStatusPanel extends StatelessWidget {
   final VoidCallback onOpenSettings;
   final VoidCallback onOpenLibrary;
   final VoidCallback onGenerateAnother;
+  final bool reduceMotion;
 
   @override
   Widget build(BuildContext context) {
@@ -336,8 +338,20 @@ class _GenerationStatusPanel extends StatelessWidget {
     final isCompletedNotice =
         completedWithoutDescriptions || completedWithoutAudio;
 
+    final isApiProgress =
+        controller.state == GenerationUiState.queued ||
+        controller.state == GenerationUiState.processing ||
+        controller.state == GenerationUiState.downloadingAudio;
+    final percent = isApiProgress ? controller.progressPercent : null;
+    final countAvailable =
+        controller.state == GenerationUiState.processing &&
+        controller.stageCurrent != null &&
+        controller.stageTotal != null &&
+        controller.stageTotal! > 0 &&
+        controller.stageCurrent! <= controller.stageTotal!;
+
     return Semantics(
-      liveRegion: true,
+      container: true,
       child: AppCard(
         highContrast: highContrast,
         simplified: simplifiedInterface,
@@ -346,18 +360,22 @@ class _GenerationStatusPanel extends StatelessWidget {
           children: [
             Row(
               children: [
-                if (controller.isBusy)
-                  SizedBox(
-                    width: 24,
-                    height: 24,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 3,
-                      color: accent,
+                if (controller.isBusy && !reduceMotion)
+                  ExcludeSemantics(
+                    child: SizedBox(
+                      width: 24,
+                      height: 24,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 3,
+                        color: accent,
+                      ),
                     ),
                   )
                 else
                   Icon(
-                    isReady
+                    controller.isBusy
+                        ? Icons.hourglass_top
+                        : isReady
                         ? Icons.check_circle_outline
                         : isCompletedNotice
                         ? Icons.info_outline
@@ -373,12 +391,15 @@ class _GenerationStatusPanel extends StatelessWidget {
                   ),
                 const SizedBox(width: 14),
                 Expanded(
-                  child: Text(
-                    controller.statusMessage,
-                    style: TextStyle(
-                      color: text,
-                      fontSize: 17,
-                      fontWeight: FontWeight.w800,
+                  child: Semantics(
+                    liveRegion: true,
+                    child: Text(
+                      controller.statusMessage,
+                      style: TextStyle(
+                        color: text,
+                        fontSize: 17,
+                        fontWeight: FontWeight.w800,
+                      ),
                     ),
                   ),
                 ),
@@ -393,20 +414,50 @@ class _GenerationStatusPanel extends StatelessWidget {
             ],
             if (controller.isBusy) ...[
               const SizedBox(height: AppSpacing.md),
-              const LinearProgressIndicator(),
+              if (isApiProgress &&
+                  controller.state != GenerationUiState.downloadingAudio) ...[
+                Text(
+                  'Gerando audiodescrição',
+                  style: TextStyle(color: text, fontWeight: FontWeight.w700),
+                ),
+                const SizedBox(height: AppSpacing.sm),
+              ],
+              if (percent != null) ...[
+                Text(
+                  '${_formatPercent(percent)}% concluído',
+                  style: TextStyle(color: text),
+                ),
+                const SizedBox(height: AppSpacing.sm),
+              ],
+              if (countAvailable) ...[
+                Text(
+                  '${controller.stageCurrent} de ${controller.stageTotal}',
+                  style: TextStyle(color: secondary),
+                ),
+                const SizedBox(height: AppSpacing.sm),
+              ],
+              // Percent changes remain readable without becoming live announcements.
+              Semantics(
+                label: isApiProgress
+                    ? 'Progresso da geração na API'
+                    : controller.statusMessage,
+                value: percent == null
+                    ? 'Em andamento'
+                    : '${_formatPercent(percent)}%',
+                excludeSemantics: true,
+                child: TickerMode(
+                  enabled: !reduceMotion,
+                  child: _GenerationProgressBar(
+                    value: percent == null ? null : percent / 100,
+                    highContrast: highContrast,
+                    reduceMotion: reduceMotion,
+                  ),
+                ),
+              ),
               const SizedBox(height: AppSpacing.md),
               _GenerationSteps(
                 state: controller.state,
                 highContrast: highContrast,
-              ),
-            ],
-            if (isReady && controller.metadata != null) ...[
-              const SizedBox(height: 16),
-              _MetadataSummary(
-                total: controller.metadata!.totalDescriptions,
-                inserted: controller.metadata!.insertedDescriptions,
-                skipped: controller.metadata!.skippedDescriptions,
-                color: secondary,
               ),
             ],
             if (isReady) ...[
@@ -492,39 +543,116 @@ class _GenerationStatusPanel extends StatelessWidget {
   }
 }
 
-class _MetadataSummary extends StatelessWidget {
-  const _MetadataSummary({
-    required this.total,
-    required this.inserted,
-    required this.skipped,
-    required this.color,
+class _GenerationProgressBar extends StatefulWidget {
+  const _GenerationProgressBar({
+    required this.value,
+    required this.highContrast,
+    required this.reduceMotion,
   });
 
-  final int total;
-  final int inserted;
-  final int skipped;
-  final Color color;
+  final double? value;
+  final bool highContrast;
+  final bool reduceMotion;
+
+  @override
+  State<_GenerationProgressBar> createState() => _GenerationProgressBarState();
+}
+
+class _GenerationProgressBarState extends State<_GenerationProgressBar>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _flow;
+
+  @override
+  void initState() {
+    super.initState();
+    _flow = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 2500),
+    );
+    _syncAnimation();
+  }
+
+  @override
+  void didUpdateWidget(covariant _GenerationProgressBar oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    _syncAnimation();
+  }
+
+  void _syncAnimation() {
+    if (widget.value != null && !widget.reduceMotion) {
+      if (!_flow.isAnimating) _flow.repeat();
+    } else {
+      _flow.stop();
+    }
+  }
+
+  @override
+  void dispose() {
+    _flow.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          'Audiodescrição concluída',
-          style: TextStyle(color: color, fontWeight: FontWeight.w700),
+    final accent = AppColors.accentFor(widget.highContrast);
+    final track = AppColors.borderFor(widget.highContrast);
+    final radius = BorderRadius.circular(4);
+    if (widget.value == null) {
+      return LinearProgressIndicator(
+        color: accent,
+        backgroundColor: track,
+        borderRadius: radius,
+      );
+    }
+    return RepaintBoundary(
+      child: ClipRRect(
+        borderRadius: radius,
+        child: ColoredBox(
+          color: track,
+          child: AnimatedBuilder(
+            animation: _flow,
+            // Only the shader changes per frame; the exact fill stays intact.
+            child: LinearProgressIndicator(
+              value: widget.value,
+              color: Colors.white,
+              backgroundColor: Colors.transparent,
+              borderRadius: radius,
+            ),
+            builder: (context, child) => ShaderMask(
+              blendMode: BlendMode.srcIn,
+              shaderCallback: (bounds) =>
+                  LinearGradient(
+                    colors: widget.highContrast
+                        ? [accent, AppColors.highContrastText, accent]
+                        : const [
+                            AppColors.accentDark,
+                            AppColors.accent,
+                            Color(0xFFE879F9),
+                            AppColors.accentDark,
+                          ],
+                    tileMode: TileMode.repeated,
+                  ).createShader(
+                    Rect.fromLTWH(
+                      bounds.left +
+                          (widget.reduceMotion ? 0 : _flow.value) *
+                              bounds.width,
+                      bounds.top,
+                      bounds.width,
+                      bounds.height,
+                    ),
+                  ),
+              child: child,
+            ),
+          ),
         ),
-        const SizedBox(height: 8),
-        Text('$total descrições geradas', style: TextStyle(color: color)),
-        Text('$inserted inseridas', style: TextStyle(color: color)),
-        Text(
-          '$skipped ignoradas por falta de espaço',
-          style: TextStyle(color: color),
-        ),
-      ],
+      ),
     );
   }
 }
+
+String _formatPercent(double value) => value == value.roundToDouble()
+    ? value.toInt().toString()
+    : value.toStringAsFixed(1);
 
 class _GenerationSteps extends StatelessWidget {
   const _GenerationSteps({required this.state, required this.highContrast});

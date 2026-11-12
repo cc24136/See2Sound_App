@@ -25,6 +25,11 @@ class GenerationSnapshot {
     required this.finishedAt,
     required this.error,
     required this.options,
+    this.progressPercent,
+    this.stage,
+    this.stageLabel,
+    this.stageCurrent,
+    this.stageTotal,
   });
 
   factory GenerationSnapshot.fromJson(Map<String, dynamic> json) {
@@ -38,6 +43,11 @@ class GenerationSnapshot {
       finishedAt: json['finished_at'] as String?,
       error: _errorMessage(json['error']),
       options: rawOptions is Map<String, dynamic> ? rawOptions : const {},
+      progressPercent: validProgressPercent(json['progress_percent']),
+      stage: _nonEmptyString(json['stage']),
+      stageLabel: _nonEmptyString(json['stage_label']),
+      stageCurrent: _stageCount(json['stage_current']),
+      stageTotal: _stageCount(json['stage_total']),
     );
   }
 
@@ -49,6 +59,30 @@ class GenerationSnapshot {
   final String? finishedAt;
   final String? error;
   final Map<String, dynamic> options;
+  final double? progressPercent;
+  final String? stage;
+  final String? stageLabel;
+  final int? stageCurrent;
+  final int? stageTotal;
+
+  // Ignore malformed values without interrupting monitoring.
+  static double? validProgressPercent(Object? value) {
+    if (value is! num || !value.isFinite || value < 0 || value > 100) {
+      return null;
+    }
+    return value.toDouble();
+  }
+
+  static int? _stageCount(Object? value) =>
+      value is num &&
+          value.isFinite &&
+          value >= 0 &&
+          value == value.roundToDouble()
+      ? value.toInt()
+      : null;
+
+  static String? _nonEmptyString(Object? value) =>
+      value is String && value.trim().isNotEmpty ? value.trim() : null;
 }
 
 String? _errorMessage(Object? value) {

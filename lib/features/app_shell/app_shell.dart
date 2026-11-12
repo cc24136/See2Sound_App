@@ -113,7 +113,6 @@ class _AppShellState extends State<AppShell> {
       SettingsPage(
         settings: appSettings,
         storageSettingsService: storageSettingsService,
-        apiSettingsService: apiSettingsService,
         narrationService: narrationService,
       ),
     ];

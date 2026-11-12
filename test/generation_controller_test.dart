@@ -18,6 +18,125 @@ void main() {
     SharedPreferences.setMockInitialValues({});
   });
 
+  test(
+    'progresso não regride, preserva ausência e conclui antes de baixar',
+    () async {
+      final harness = await _ControllerHarness.create(
+        api: _FakeApiService(
+          statuses: const [
+            GenerationStatus.queued,
+            GenerationStatus.processing,
+            GenerationStatus.processing,
+            GenerationStatus.processing,
+            GenerationStatus.processing,
+            GenerationStatus.completed,
+          ],
+          progresses: const [0, 65, 20, null, double.nan, 90],
+        ),
+      );
+      final progress = <double?>[];
+      harness.controller.addListener(() {
+        if (harness.controller.state == GenerationUiState.queued ||
+            harness.controller.state == GenerationUiState.processing ||
+            harness.controller.state == GenerationUiState.downloadingAudio) {
+          progress.add(harness.controller.progressPercent);
+        }
+      });
+      try {
+        await harness.start();
+        await _waitFor(
+          () => harness.controller.state == GenerationUiState.ready,
+        );
+        expect(progress, containsAllInOrder([null, 0, 65, 65, 65, 65, 100]));
+        expect(harness.controller.progressPercent, 100);
+        expect(harness.api.healthCalls, 1);
+        expect(harness.api.statusCalls, 6);
+        expect(harness.controller.metadata, isNotNull);
+        progress.clear();
+        await harness.start();
+        expect(progress.first, isNull);
+      } finally {
+        await harness.dispose();
+      }
+    },
+  );
+
+  test('retry do resultado preserva progresso concluído', () async {
+    final harness = await _ControllerHarness.create(
+      api: _FakeApiService(
+        statuses: const [GenerationStatus.completed],
+        resultErrorsBeforeSuccess: 1,
+      ),
+    );
+    try {
+      await harness.start();
+      expect(harness.controller.progressPercent, 100);
+      await harness.controller.retry();
+      expect(harness.controller.progressPercent, 100);
+      expect(harness.controller.state, GenerationUiState.ready);
+      expect(harness.api.createCalls, 1);
+      expect(harness.api.healthCalls, 1);
+    } finally {
+      await harness.dispose();
+    }
+  });
+
+  test(
+    'desconexão e retry durante processamento não reiniciam progresso',
+    () async {
+      final harness = await _ControllerHarness.create(
+        api: _FakeApiService(
+          statuses: const [
+            GenerationStatus.processing,
+            GenerationStatus.processing,
+            GenerationStatus.completed,
+          ],
+          progresses: const [65, 20, 100],
+          statusErrorCalls: const {2},
+        ),
+        maxConsecutivePollErrors: 1,
+      );
+      try {
+        await harness.start();
+        expect(harness.controller.progressPercent, 65);
+        expect(harness.controller.stage, 'spectra');
+        expect(harness.controller.stageLabel, 'Analisando cenas');
+        expect(harness.controller.stageCurrent, 2);
+        expect(harness.controller.stageTotal, 8);
+        await _waitFor(
+          () => harness.controller.state == GenerationUiState.error,
+        );
+        expect(harness.controller.progressPercent, 65);
+        await harness.controller.retry();
+        await _waitFor(
+          () => harness.controller.state == GenerationUiState.ready,
+        );
+        expect(harness.controller.progressPercent, 100);
+        expect(harness.api.createCalls, 1);
+        expect(harness.api.healthCalls, 1);
+      } finally {
+        await harness.dispose();
+      }
+    },
+  );
+
+  test(
+    'verificação automática de saúde impede envio se servidor indisponível',
+    () async {
+      final harness = await _ControllerHarness.create(
+        api: _FakeApiService(healthy: false),
+      );
+      try {
+        await harness.start();
+        expect(harness.api.healthCalls, 1);
+        expect(harness.api.createCalls, 0);
+        expect(harness.controller.state, GenerationUiState.error);
+      } finally {
+        await harness.dispose();
+      }
+    },
+  );
+
   test('bloqueia geração quando não há pasta configurada', () async {
     final storage = StorageSettingsService();
     final library = LibraryService();
@@ -362,6 +481,9 @@ class _FakeApiService extends See2SoundApiService {
     this.statusErrorsBeforeSuccess = 0,
     this.resultErrorsBeforeSuccess = 0,
     this.statusDelay = Duration.zero,
+    this.progresses = const [],
+    this.statusErrorCalls = const {},
+    this.healthy = true,
   }) : _statuses = List.of(statuses ?? const [GenerationStatus.completed]),
        _result =
            result ??
@@ -384,9 +506,16 @@ class _FakeApiService extends See2SoundApiService {
   int createCalls = 0;
   int statusCalls = 0;
   int downloadCalls = 0;
+  int healthCalls = 0;
+  final List<double?> progresses;
+  final Set<int> statusErrorCalls;
+  final bool healthy;
 
   @override
-  Future<bool> healthCheck() async => true;
+  Future<bool> healthCheck() async {
+    healthCalls++;
+    return healthy;
+  }
 
   @override
   Future<GenerationCreated> createGeneration({
@@ -414,7 +543,8 @@ class _FakeApiService extends See2SoundApiService {
   Future<GenerationSnapshot> getGenerationStatus(String jobId) async {
     statusCalls++;
     if (statusDelay > Duration.zero) await Future<void>.delayed(statusDelay);
-    if (statusCalls <= statusErrorsBeforeSuccess) {
+    if (statusCalls <= statusErrorsBeforeSuccess ||
+        statusErrorCalls.contains(statusCalls)) {
       throw const ApiException('Conexão temporariamente indisponível.');
     }
     final index = (statusCalls - statusErrorsBeforeSuccess - 1).clamp(
@@ -431,6 +561,11 @@ class _FakeApiService extends See2SoundApiService {
       finishedAt: null,
       error: status == GenerationStatus.failed ? 'Falha no TTS' : null,
       options: const {},
+      progressPercent: index < progresses.length ? progresses[index] : null,
+      stage: 'spectra',
+      stageLabel: 'Analisando cenas',
+      stageCurrent: 2,
+      stageTotal: 8,
     );
   }
 

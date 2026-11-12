@@ -38,20 +38,11 @@ class ApiSettingsService extends ChangeNotifier {
 
   Future<void> initialize() async {
     if (_initialized) return;
-    try {
-      final preferences = await SharedPreferences.getInstance();
-      final stored = preferences.getString(_baseUrlKey);
-      _baseUrl = stored == null || stored.trim().isEmpty
-          ? ApiConfig.defaultBaseUrl
-          : ApiConfig.normalizeBaseUrl(stored);
-    } catch (error, stackTrace) {
-      debugPrint('[See2Sound] Erro ao carregar endereço da API: $error');
-      debugPrint('$stackTrace');
-      _baseUrl = ApiConfig.defaultBaseUrl;
-    } finally {
-      _initialized = true;
-      notifyListeners();
-    }
+    // The build URL (or its existing fallback) owns startup configuration.
+    // Legacy preferences from the removed server section must not override it.
+    _baseUrl = ApiConfig.defaultBaseUrl;
+    _initialized = true;
+    notifyListeners();
   }
 
   Future<void> setBaseUrl(String value) async {

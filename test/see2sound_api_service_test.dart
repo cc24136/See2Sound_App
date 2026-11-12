@@ -189,8 +189,43 @@ void main() {
 
     final status = await service.getGenerationStatus('job-1');
     expect(status.status, GenerationStatus.completed);
+    expect(status.progressPercent, isNull);
     service.close();
   });
+
+  test(
+    'polling interpreta progresso na mesma resposta HTTP de status',
+    () async {
+      var requests = 0;
+      final service = See2SoundApiService(
+        client: MockClient((request) async {
+          requests++;
+          expect(request.url.path, '/api/v1/generations/job-1');
+          return http.Response(
+            jsonEncode({
+              'job_id': 'job-1',
+              'status': 'processing',
+              'progress_percent': 65,
+              'stage': 'spectra',
+              'stage_label': 'Analisando cenas',
+              'stage_current': null,
+              'stage_total': null,
+            }),
+            200,
+            headers: {'content-type': 'application/json; charset=utf-8'},
+          );
+        }),
+        uriBuilder: testUri,
+      );
+      final status = await service.getGenerationStatus('job-1');
+      expect(status.progressPercent, 65);
+      expect(status.stage, 'spectra');
+      expect(status.stageLabel, 'Analisando cenas');
+      expect(status.stageCurrent, isNull);
+      expect(requests, 1);
+      service.close();
+    },
+  );
 
   test('getGenerationStatus retorna failed com mensagem', () async {
     final service = See2SoundApiService(
